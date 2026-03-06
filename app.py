@@ -1,8 +1,14 @@
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+
+from views import (
+    render_question_1,
+    render_question_2,
+    render_question_3,
+    render_question_4,
+    render_question_5,
+)
 
 # ============================================================
 # PAGE CONFIG
@@ -97,7 +103,7 @@ with st.sidebar:
 
 
 # ============================================================
-# HELPER – Sample data (Replace with your real data)
+# SAMPLE DATA (Replace with your real data)
 # ============================================================
 @st.cache_data
 def load_sample_data():
@@ -119,99 +125,6 @@ df = load_sample_data()
 
 
 # ============================================================
-# PAGE RENDERERS
-# ============================================================
-def render_question_1():
-    st.header("📌 Câu hỏi nghiên cứu 1")
-    st.markdown("> *Mô tả câu hỏi nghiên cứu 1 ở đây…*")
-    st.markdown("---")
-
-    # -- KPI row
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Tổng bản ghi", f"{len(df):,}")
-    col2.metric("Giá trị trung bình", f"{df['value'].mean():.1f}")
-    col3.metric("Điểm cao nhất", f"{df['score'].max()}")
-
-    # -- Chart
-    fig = px.line(
-        df.groupby("date")["value"].sum().reset_index(),
-        x="date",
-        y="value",
-        title="Biểu đồ mẫu – Line Chart",
-        template="plotly_dark",
-    )
-    fig.update_layout(margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig, width="stretch")
-
-
-def render_question_2():
-    st.header("📌 Câu hỏi nghiên cứu 2")
-    st.markdown("> *Mô tả câu hỏi nghiên cứu 2 ở đây…*")
-    st.markdown("---")
-
-    fig = px.bar(
-        df.groupby("category")["value"].sum().reset_index(),
-        x="category",
-        y="value",
-        color="category",
-        title="Biểu đồ mẫu – Bar Chart",
-        template="plotly_dark",
-    )
-    fig.update_layout(margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig, width="stretch")
-
-
-def render_question_3():
-    st.header("📌 Câu hỏi nghiên cứu 3")
-    st.markdown("> *Mô tả câu hỏi nghiên cứu 3 ở đây…*")
-    st.markdown("---")
-
-    fig = px.scatter(
-        df,
-        x="value",
-        y="score",
-        color="category",
-        title="Biểu đồ mẫu – Scatter Plot",
-        template="plotly_dark",
-    )
-    fig.update_layout(margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig, width="stretch")
-
-
-def render_question_4():
-    st.header("📌 Câu hỏi nghiên cứu 4")
-    st.markdown("> *Mô tả câu hỏi nghiên cứu 4 ở đây…*")
-    st.markdown("---")
-
-    fig = px.pie(
-        df.groupby("category")["value"].sum().reset_index(),
-        names="category",
-        values="value",
-        title="Biểu đồ mẫu – Pie Chart",
-        template="plotly_dark",
-    )
-    fig.update_layout(margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig, width="stretch")
-
-
-def render_question_5():
-    st.header("📌 Câu hỏi nghiên cứu 5")
-    st.markdown("> *Mô tả câu hỏi nghiên cứu 5 ở đây…*")
-    st.markdown("---")
-
-    fig = px.histogram(
-        df,
-        x="score",
-        nbins=20,
-        color="category",
-        title="Biểu đồ mẫu – Histogram",
-        template="plotly_dark",
-    )
-    fig.update_layout(margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# ============================================================
 # ROUTER
 # ============================================================
 PAGES = {
@@ -222,4 +135,4 @@ PAGES = {
     "📌 Câu hỏi 5": render_question_5,
 }
 
-PAGES[selected]()
+PAGES[selected](df)
