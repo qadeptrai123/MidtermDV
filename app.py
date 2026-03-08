@@ -8,6 +8,7 @@ from views import (
     render_question_3,
     render_question_4,
     render_question_5,
+    render_dashboard,
 )
 
 # ============================================================
@@ -26,6 +27,20 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    /* ---------- Global ---------- */
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: 'Inter', sans-serif !important;
+    }
+    [data-testid="stAppViewContainer"] {
+        background: #0a0e17;
+    }
+    [data-testid="stHeader"] {
+        background: rgba(10, 14, 23, 0.8);
+        backdrop-filter: blur(10px);
+    }
+
     /* ---------- Sidebar ---------- */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0f0c29, #302b63, #24243e);
@@ -57,15 +72,48 @@ st.markdown(
 
     /* ---------- Main area ---------- */
     .block-container {
-        padding-top: 1.5rem;
+        padding-top: 1rem;
+        max-width: 100% !important;
     }
 
     /* ---------- Metric cards ---------- */
     [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #667eea33, #764ba233);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(0,212,170,0.1));
+        border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 12px;
         padding: 1rem 1.25rem;
+        backdrop-filter: blur(10px);
+    }
+    [data-testid="stMetricValue"] {
+        font-weight: 700 !important;
+    }
+
+    /* ---------- Plotly chart containers ---------- */
+    [data-testid="stPlotlyChart"] {
+        background: #0d1117;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 0.5rem;
+    }
+
+    /* ---------- Markdown headers ---------- */
+    h3 {
+        color: #e5e7eb !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        padding-top: 0.5rem;
+    }
+
+    /* ---------- Horizontal rules ---------- */
+    hr {
+        border-color: rgba(255, 255, 255, 0.06) !important;
+        margin: 0.5rem 0 !important;
+    }
+
+    /* ---------- Selectbox / Multiselect ---------- */
+    [data-testid="stMultiSelect"], [data-testid="stSelectbox"] {
+        background: rgba(17, 24, 39, 0.5);
+        border-radius: 8px;
     }
     </style>
     """,
@@ -81,8 +129,9 @@ with st.sidebar:
     st.markdown("---")
 
     selected = st.radio(
-        "**Chọn câu hỏi nghiên cứu:**",
+        "**Chọn trang:**",
         options=[
+            "📊 Dashboard",
             "📌 Câu hỏi 1",
             "📌 Câu hỏi 2",
             "📌 Câu hỏi 3",
@@ -128,6 +177,7 @@ df = load_sample_data()
 # ROUTER
 # ============================================================
 PAGES = {
+    "📊 Dashboard": render_dashboard,
     "📌 Câu hỏi 1": render_question_1,
     "📌 Câu hỏi 2": render_question_2,
     "📌 Câu hỏi 3": render_question_3,
