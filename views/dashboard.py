@@ -184,23 +184,60 @@ def _render_candlestick_panel(candles_df: pd.DataFrame, selected_coin: str):
 # PANEL 2: OPEN INTEREST TIMELINE
 # ============================================================
 @st.cache_resource
-def _create_oi_figure(metrics_df: pd.DataFrame, selected_coins: list):
-    """Factory for OI chart."""
+def _create_oi_figure(metrics_df: pd.DataFrame, selected_coins: list, price_df: pd.DataFrame = None, primary_coin: str = None):
+    """Factory for OI area chart with optional price overlay."""
     fig = go.Figure()
     colors = {"ETH": ACCENT_COLOR, "SOL": WARNING_COLOR, "DOGE": "#06b6d4"}
+    
+    # 1. Add OI Area traces
     for coin in selected_coins:
         coin_df = metrics_df[metrics_df["coin"] == coin].sort_values("create_time")
         if coin_df.empty: continue
-        fig.add_trace(go.Scatter(x=coin_df["create_time"], y=coin_df["sum_open_interest_value"], mode="lines", name=f"{coin} OI", line=dict(color=colors.get(coin, ACCENT_COLOR), width=1.5)))
+        fig.add_trace(go.Scatter(
+            x=coin_df["create_time"], 
+            y=coin_df["sum_open_interest_value"], 
+            mode="lines", 
+            name=f"{coin} OI", 
+            fill="tozeroy",
+            opacity=0.2, # Slightly lower opacity for better visibility
+            line=dict(color=colors.get(coin, ACCENT_COLOR), width=1)
+        ))
+    
+    # 2. Optional Price Overlay (Added LAST to be on top)
+    if price_df is not None and not price_df.empty and primary_coin:
+        fig.add_trace(go.Scatter(
+            x=price_df["open_time"],
+            y=price_df["close"],
+            mode="lines",
+            name=f"Giá {primary_coin}",
+            line=dict(color="white", width=2),
+            yaxis="y2"
+        ))
+        fig.update_layout(
+            yaxis2=dict(
+                title="Giá ($)",
+                overlaying="y",
+                side="right",
+                showgrid=False,
+                zeroline=False
+            )
+        )
+
     _apply_layout(fig, title="Open Interest Over Time", height=400)
     fig.update_yaxes(title_text="OI Value (USD)")
     fig.update_layout(xaxis_rangeslider_visible=True)
     return fig
 
-def _render_oi_panel(metrics_df: pd.DataFrame, selected_coins: list):
-    """Standard OI panel."""
+def _render_oi_panel(metrics_df: pd.DataFrame, selected_coins: list, candles_df: pd.DataFrame = None, primary_coin: str = None):
+    """OI panel with area chart and optional price overlay."""
     st.markdown("### 📊 Open Interest")
-    fig = _create_oi_figure(metrics_df, selected_coins)
+    
+    show_price = st.checkbox("Hiển thị giá", key="oi_show_price")
+    p_df = None
+    if show_price and candles_df is not None:
+        p_df = candles_df[candles_df["coin"] == primary_coin]
+        
+    fig = _create_oi_figure(metrics_df, selected_coins, p_df, primary_coin)
     st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
 
 
@@ -450,79 +487,101 @@ def _render_market_signals_panel(candles_df: pd.DataFrame, metrics_df: pd.DataFr
 
 
 # ============================================================
-# PANEL 8.5: LIQUIDATION TREEMAP (Market Wide)
+# PANEL 8.5: LIQUIDATION HEATMAP (Binance Style)
 # ============================================================
 @st.cache_resource
-def _create_liquidation_treemap(liq_df: pd.DataFrame):
-    """Factory for liquidation treemap."""
-    if liq_df.empty: return None
+def _create_liquidation_heatmap(liq_df: pd.DataFrame, candle_df: pd.DataFrame, threshold: float = 0.0):
+    """Factory for liquidation heatmap overlay."""
+    if liq_df.empty or candle_df.empty: return None
     
-    # Aggregate by coin and side
+    # 1. Prepare Heatmap Matrix
     df = liq_df.copy()
-    # Categorize color by side ratio
-    agg = df.groupby(["coin", "liq_side"])["liq_value"].sum().unstack(fill_value=0)
+    c_df = candle_df.copy()
     
-    # Ensure all columns exist
-    for col in ["Long Liq", "Short Liq"]:
-        if col not in agg.columns:
-            agg[col] = 0.0
-            
-    agg = agg.reset_index()
-    agg["Total"] = agg["Long Liq"] + agg["Short Liq"]
-    # Color scale: -1 (All Long Liq/Red) to 1 (All Short Liq/Green)
-    agg["ColorVal"] = (agg["Short Liq"] - agg["Long Liq"]) / agg["Total"].replace(0, 1)
+    # Define price bins (e.g. 100 bins over range)
+    p_min, p_max = c_df["low"].min(), c_df["high"].max()
+    p_range = p_max - p_min
+    if p_range == 0: p_range = 1
     
-    fig = px.treemap(
-        agg, path=[px.Constant("Market"), "coin"], values="Total",
-        color="ColorVal",
-        color_continuous_scale=[[0, BEAR_COLOR], [0.5, "#1a1a2e"], [1, BULL_COLOR]],
-        color_continuous_midpoint=0,
-        custom_data=["Long Liq", "Short Liq"]
+    # Bins for Y-axis (Price)
+    price_bins = np.linspace(p_min * 0.999, p_max * 1.001, 150)
+    df["price_bin"] = pd.cut(df["average_price"], bins=price_bins, labels=price_bins[:-1])
+    
+    # Pivot for Heatmap: Time (X) vs Price Bin (Y)
+    # Resample liq to match candle frequency or fixed interval
+    df = df.set_index("time")
+    agg = df.groupby([pd.Grouper(freq="30min"), "price_bin"])["liq_value"].sum().reset_index()
+    
+    # Apply Threshold (normalized 0 to 1)
+    max_liq = agg["liq_value"].max()
+    if max_liq > 0:
+        agg["liq_norm"] = agg["liq_value"] / max_liq
+    else:
+        agg["liq_norm"] = 0.0
+        
+    agg = agg[agg["liq_norm"] >= threshold]
+    
+    # Generate Heatmap
+    fig = go.Figure()
+    
+    # Background Heatmap
+    fig.add_trace(go.Heatmap(
+        x=agg["time"],
+        y=agg["price_bin"],
+        z=agg["liq_value"],
+        colorscale="Viridis",
+        showscale=True,
+        colorbar=dict(title="Thanh lý ($)", thickness=15, len=0.5),
+        hovertemplate="Thời gian: %{x}<br>Giá: %{y}<br>Thanh lý: $%{z:,.0f}<extra></extra>",
+        zsmooth=False
+    ))
+    
+    # Price Line Overlay
+    fig.add_trace(go.Scatter(
+        x=c_df["open_time"],
+        y=c_df["close"],
+        mode="lines",
+        line=dict(color="white", width=1.5, shape="hv"),
+        name="Giá",
+        hoverinfo="skip"
+    ))
+    
+    _apply_layout(fig, title="Bản đồ nhiệt thanh lý (Heatmap)", height=500)
+    fig.update_layout(
+        yaxis=dict(side="right", title="Giá ($)"),
+        xaxis=dict(title="Thời gian"),
+        plot_bgcolor="#0a0e17",
+        paper_bgcolor="#0a0e17"
     )
-    
-    fig.update_traces(
-        hovertemplate="<b>%{label}</b><br>Tổng thanh lý: $%{value:,.2f}<br>Long: $%{customdata[0]:,.2f}<br>Short: $%{customdata[1]:,.2f}<br>",
-        texttemplate="<b>%{label}</b><br>$%{value:,.2M}",
-        marker_line_width=2,
-        marker_line_color="rgba(255,255,255,0.2)"
-    )
-    
-    _apply_layout(fig, title="Bản đồ nhiệt thanh lý (Treemap)", height=500)
-    fig.update_layout(coloraxis_showscale=False)
     return fig
 
-def _render_liquidation_treemap_panel(all_liq: pd.DataFrame, selected_coins: list):
-    """Treemap panel with local time-range slider."""
-    st.markdown("### 🗺️ Bản Đồ Nhiệt Thanh Lý")
+def _render_liquidation_heatmap_panel(all_liq: pd.DataFrame, all_candles: pd.DataFrame, primary_coin: str):
+    """Heatmap panel with local threshold control."""
+    st.markdown("### 🔥 Bản Đồ Nhiệt Thanh Lý")
     
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        hours = st.select_slider(
-            "⏳ Xem dữ liệu trong:",
-            options=[1, 4, 12, 24, 48, 72, 168],
-            value=24,
-            format_func=lambda x: f"{x} giờ" if x < 24 else f"{x//24} ngày",
-            key="treemap_hours"
+    # Filter data for primary coin only
+    coin_liq = all_liq[all_liq["coin"] == primary_coin]
+    coin_candles = all_candles[all_candles["coin"] == primary_coin]
+    
+    col_ctrl, _ = st.columns([1, 2])
+    with col_ctrl:
+        threshold = st.slider(
+            "💎 Ngưỡng thanh lý (Threshold)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.1,
+            step=0.01,
+            key="liq_heatmap_thresh"
         )
     
-    # Filter all_liq by hours from the latest data point
-    if not all_liq.empty:
-        latest_time = all_liq["time"].max()
-        cutoff = latest_time - pd.Timedelta(hours=hours)
-        filtered_liq = all_liq[all_liq["time"] >= cutoff]
-        
-        # Ensure all selected coins are in the agg even if filtered_liq is empty for some
-        # Create a base df with all selected_coins to guarantee visibility
-        base_df = pd.DataFrame({"coin": selected_coins, "liq_value": 0.0, "liq_side": "Long Liq"})
-        full_df = pd.concat([filtered_liq, base_df], ignore_index=True)
-        fig = _create_liquidation_treemap(full_df)
-
+    if not coin_liq.empty:
+        fig = _create_liquidation_heatmap(coin_liq, coin_candles, threshold)
         if fig:
             st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
         else:
-            st.warning("Không có dữ liệu trong khoảng thời gian này.")
+            st.warning("Không có dữ liệu vượt ngưỡng hiển thị.")
     else:
-        st.warning("Không có dữ liệu thanh lý.")
+        st.warning(f"Không có dữ liệu thanh lý cho {primary_coin}.")
 
 
 # ============================================================
@@ -629,10 +688,10 @@ def render_dashboard(_df=None):
         date_range = st.slider(
             "📅 Khoảng thời gian",
             min_value=pd.Timestamp("2024-01-01").to_pydatetime(),
-            max_value=pd.Timestamp("2024-03-31").to_pydatetime(),
+            max_value=pd.Timestamp("2024-03-03").to_pydatetime(),
             value=(
                 pd.Timestamp("2024-01-01").to_pydatetime(),
-                pd.Timestamp("2024-01-31").to_pydatetime(),
+                pd.Timestamp("2024-03-03").to_pydatetime(),
             ),
             format="DD/MM/YYYY",
             key="dash_date_range",
@@ -677,8 +736,8 @@ def render_dashboard(_df=None):
 
     st.markdown("---")
 
-    # ── PANEL 1.5: Liquidation Treemap ──
-    _render_liquidation_treemap_panel(all_liq, selected_coins)
+    # ── PANEL 1.5: Liquidation Heatmap ──
+    _render_liquidation_heatmap_panel(all_liq, all_candles, primary_coin)
 
     st.markdown("---")
 
@@ -690,7 +749,7 @@ def render_dashboard(_df=None):
     # ── PANEL 2-3: OI + Liquidation (side by side) ──
     col_oi, col_liq = st.columns(2)
     with col_oi:
-        _render_oi_panel(metrics, selected_coins)
+        _render_oi_panel(metrics, selected_coins, candles, primary_coin)
     with col_liq:
         _render_liquidation_panel(liq_agg, primary_coin)
 

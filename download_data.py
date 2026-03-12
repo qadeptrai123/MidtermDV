@@ -24,7 +24,7 @@ import pandas as pd
 # ============================================================
 BASE_URL = "https://data.binance.vision/data/futures/cm/daily"
 SYMBOLS = ["ETHUSD_PERP", "DOGEUSD_PERP", "SOLUSD_PERP"]
-INTERVAL = "5m"
+INTERVAL = "1h"
 START_DATE = date(2024, 1, 1)
 END_DATE = date(2024, 3, 31)
 
@@ -257,15 +257,15 @@ if __name__ == "__main__":
     print("=" * 60)
     candle_paths = download_candles()
 
-    print("\n" + "=" * 60)
-    print("  [2/3] Downloading LIQUIDATION SNAPSHOTS")
-    print("=" * 60)
-    liquid_paths = download_liquidation()
+    # print("\n" + "=" * 60)
+    # print("  [2/3] Downloading LIQUIDATION SNAPSHOTS")
+    # print("=" * 60)
+    # liquid_paths = download_liquidation()
 
-    print("\n" + "=" * 60)
-    print("  [3/3] Downloading METRICS (DETAIL)")
-    print("=" * 60)
-    detail_paths = download_detail()
+    # print("\n" + "=" * 60)
+    # print("  [3/3] Downloading METRICS (DETAIL)")
+    # print("=" * 60)
+    # detail_paths = download_detail()
 
     print("\n" + "=" * 60)
     print("  All downloads complete!")

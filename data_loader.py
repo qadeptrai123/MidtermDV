@@ -37,8 +37,9 @@ def load_candles(coin: str) -> pd.DataFrame:
     """Load 5-minute candle data for a coin efficiently."""
     path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_5m.csv")
     df = pd.read_csv(
-        path, 
+        path,
         parse_dates=["open_time", "close_time"],
+
         dtype={
             "open": "float64", "high": "float64", "low": "float64", "close": "float64",
             "volume": "float64", "quote_volume": "float64",
@@ -57,6 +58,7 @@ def load_liquidations(coin: str) -> pd.DataFrame:
     df = pd.read_csv(
         path,
         parse_dates=["time"],
+
         dtype={
             "price": "float64", "average_price": "float64",
             "original_quantity": "float64", "last_fill_quantity": "float64",
@@ -76,6 +78,7 @@ def load_metrics(coin: str) -> pd.DataFrame:
     df = pd.read_csv(
         path,
         parse_dates=["create_time"],
+
         dtype={
             "sum_open_interest": "float64", "sum_open_interest_value": "float64",
             "count_toptrader_long_short_ratio": "float64", "sum_toptrader_long_short_ratio": "float64",
