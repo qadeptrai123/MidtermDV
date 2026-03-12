@@ -34,37 +34,35 @@ TEXT_SECONDARY = "#9ca3af"
 # ============================================================
 @st.cache_data(ttl=3600)
 def load_candles(coin: str) -> pd.DataFrame:
-    """Load 5-minute candle data for a coin."""
+    """Load 5-minute candle data for a coin efficiently."""
     path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_5m.csv")
-    df = pd.read_csv(path)
-    df["open_time"] = pd.to_datetime(df["open_time"])
-    df["close_time"] = pd.to_datetime(df["close_time"])
-    for col in ["open", "high", "low", "close"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df["volume"] = pd.to_numeric(df["volume"], errors="coerce")
-    df["quote_volume"] = pd.to_numeric(df["quote_volume"], errors="coerce")
-    df["taker_buy_volume"] = pd.to_numeric(df["taker_buy_volume"], errors="coerce")
-    df["taker_buy_quote_volume"] = pd.to_numeric(df["taker_buy_quote_volume"], errors="coerce")
-    df["count"] = pd.to_numeric(df["count"], errors="coerce")
+    df = pd.read_csv(
+        path, 
+        parse_dates=["open_time", "close_time"],
+        dtype={
+            "open": "float64", "high": "float64", "low": "float64", "close": "float64",
+            "volume": "float64", "quote_volume": "float64",
+            "taker_buy_volume": "float64", "taker_buy_quote_volume": "float64",
+            "count": "int64"
+        }
+    )
     df["coin"] = coin
     return df
 
 
 @st.cache_data(ttl=3600)
 def load_liquidations(coin: str) -> pd.DataFrame:
-    """Load liquidation snapshot data for a coin."""
+    """Load liquidation snapshot data for a coin efficiently."""
     path = os.path.join(LIQUID_DIR, f"{coin}USD_PERP_liquidation.csv")
-    df = pd.read_csv(path)
-    df["time"] = pd.to_datetime(df["time"])
-    df["price"] = pd.to_numeric(df["price"], errors="coerce")
-    df["average_price"] = pd.to_numeric(df["average_price"], errors="coerce")
-    df["original_quantity"] = pd.to_numeric(df["original_quantity"], errors="coerce")
-    df["last_fill_quantity"] = pd.to_numeric(df["last_fill_quantity"], errors="coerce")
-    df["accumulated_fill_quantity"] = pd.to_numeric(df["accumulated_fill_quantity"], errors="coerce")
-    # BUY side = Long liquidation (forced buy = short was liquidated? No.)
-    # In futures liquidation: side=BUY means the liquidation order is a BUY,
-    # which means a SHORT position was liquidated.
-    # side=SELL means a LONG position was liquidated.
+    df = pd.read_csv(
+        path,
+        parse_dates=["time"],
+        dtype={
+            "price": "float64", "average_price": "float64",
+            "original_quantity": "float64", "last_fill_quantity": "float64",
+            "accumulated_fill_quantity": "float64"
+        }
+    )
     df["liq_side"] = df["side"].map({"BUY": "Short Liq", "SELL": "Long Liq"})
     df["liq_value"] = df["accumulated_fill_quantity"] * df["average_price"]
     df["coin"] = coin
@@ -73,19 +71,17 @@ def load_liquidations(coin: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_metrics(coin: str) -> pd.DataFrame:
-    """Load metrics data (OI, long/short ratios) for a coin."""
+    """Load metrics data (OI, long/short ratios) for a coin efficiently."""
     path = os.path.join(METRICS_DIR, f"{coin}USD_PERP_metrics.csv")
-    df = pd.read_csv(path)
-    df["create_time"] = pd.to_datetime(df["create_time"])
-    for col in [
-        "sum_open_interest",
-        "sum_open_interest_value",
-        "count_toptrader_long_short_ratio",
-        "sum_toptrader_long_short_ratio",
-        "count_long_short_ratio",
-        "sum_taker_long_short_vol_ratio",
-    ]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = pd.read_csv(
+        path,
+        parse_dates=["create_time"],
+        dtype={
+            "sum_open_interest": "float64", "sum_open_interest_value": "float64",
+            "count_toptrader_long_short_ratio": "float64", "sum_toptrader_long_short_ratio": "float64",
+            "count_long_short_ratio": "float64", "sum_taker_long_short_vol_ratio": "float64"
+        }
+    )
     df["coin"] = coin
     return df
 
@@ -306,6 +302,31 @@ def filter_by_date(df: pd.DataFrame, start_date, end_date, time_col: str = "open
 def filter_by_coins(df: pd.DataFrame, coins: list) -> pd.DataFrame:
     """Filter DataFrame by selected coins."""
     return df[df["coin"].isin(coins)].copy()
+
+
+@st.cache_data(ttl=3600)
+def get_dashboard_data(selected_coins, start_date, end_date, freq):
+    """Higher-level cached data pipeline to avoid re-processing on every UI change."""
+    # Load raw
+    all_candles_df = load_all_candles()
+    all_liq_df = load_all_liquidations()
+    all_metrics_df = load_all_metrics()
+
+    # Filter
+    all_candles = filter_by_coins(all_candles_df, selected_coins)
+    all_liq = filter_by_coins(all_liq_df, selected_coins)
+    all_metrics = filter_by_coins(all_metrics_df, selected_coins)
+
+    all_candles = filter_by_date(all_candles, start_date, end_date, "open_time")
+    all_liq = filter_by_date(all_liq, start_date, end_date, "time")
+    all_metrics = filter_by_date(all_metrics, start_date, end_date, "create_time")
+
+    # Resample / Aggregate
+    candles = resample_candles(all_candles, freq)
+    metrics = resample_metrics(all_metrics, freq)
+    liq_agg = aggregate_liquidations(all_liq, freq)
+
+    return candles, metrics, liq_agg, all_candles, all_metrics, all_liq
 
 
 # ============================================================

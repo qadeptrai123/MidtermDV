@@ -6,7 +6,7 @@
 
 ## Câu hỏi 1: Xu hướng giá ETH và đường trung bình động MA(7)
 
-Trong giai đoạn Q1/2024, xu hướng giá ETH biến động như thế nào so với đường trung bình động 7 nến (MA-7) của giá đóng cửa? Các giai đoạn giá nằm trên/dưới MA-7 phản ánh tín hiệu gì?
+Trong giai đoạn Q1/2024, xu hướng giá ETH biến động như thế nào so với trung bình động 7 nến của giá đóng cửa các ngày trước? Các giai đoạn giá nằm trên/dưới MA-7 phản ánh tín hiệu gì?
 
 ## Câu hỏi 2: Tương quan giá giữa các đồng coin trong giai đoạn hưng phấn / hoảng loạn
 
