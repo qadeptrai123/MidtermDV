@@ -34,37 +34,45 @@ TEXT_SECONDARY = "#9ca3af"
 # ============================================================
 @st.cache_data(ttl=3600)
 def load_candles(coin: str) -> pd.DataFrame:
-    """Load 5-minute candle data for a coin efficiently."""
-    path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_5m.csv")
-    df = pd.read_csv(
-        path,
-        parse_dates=["open_time", "close_time"],
-
-        dtype={
-            "open": "float64", "high": "float64", "low": "float64", "close": "float64",
-            "volume": "float64", "quote_volume": "float64",
-            "taker_buy_volume": "float64", "taker_buy_quote_volume": "float64",
-            "count": "int64"
-        }
-    )
+    """Load 5-minute candle data for a coin efficiently (Parquet preferred)."""
+    parquet_path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_5m.parquet")
+    csv_path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_5m.csv")
+    
+    if os.path.exists(parquet_path):
+        df = pd.read_parquet(parquet_path)
+    else:
+        df = pd.read_csv(
+            csv_path,
+            parse_dates=["open_time", "close_time"],
+            dtype={
+                "open": "float64", "high": "float64", "low": "float64", "close": "float64",
+                "volume": "float64", "quote_volume": "float64",
+                "taker_buy_volume": "float64", "taker_buy_quote_volume": "float64",
+                "count": "int64"
+            }
+        )
     df["coin"] = coin
     return df
 
 
 @st.cache_data(ttl=3600)
 def load_liquidations(coin: str) -> pd.DataFrame:
-    """Load liquidation snapshot data for a coin efficiently."""
-    path = os.path.join(LIQUID_DIR, f"{coin}USD_PERP_liquidation.csv")
-    df = pd.read_csv(
-        path,
-        parse_dates=["time"],
+    """Load liquidation snapshot data for a coin efficiently (Parquet preferred)."""
+    parquet_path = os.path.join(LIQUID_DIR, f"{coin}USD_PERP_liquidation.parquet")
+    csv_path = os.path.join(LIQUID_DIR, f"{coin}USD_PERP_liquidation.csv")
 
-        dtype={
-            "price": "float64", "average_price": "float64",
-            "original_quantity": "float64", "last_fill_quantity": "float64",
-            "accumulated_fill_quantity": "float64"
-        }
-    )
+    if os.path.exists(parquet_path):
+        df = pd.read_parquet(parquet_path)
+    else:
+        df = pd.read_csv(
+            csv_path,
+            parse_dates=["time"],
+            dtype={
+                "price": "float64", "average_price": "float64",
+                "original_quantity": "float64", "last_fill_quantity": "float64",
+                "accumulated_fill_quantity": "float64"
+            }
+        )
     df["liq_side"] = df["side"].map({"BUY": "Short Liq", "SELL": "Long Liq"})
     df["liq_value"] = df["accumulated_fill_quantity"] * df["average_price"]
     df["coin"] = coin
@@ -73,18 +81,22 @@ def load_liquidations(coin: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_metrics(coin: str) -> pd.DataFrame:
-    """Load metrics data (OI, long/short ratios) for a coin efficiently."""
-    path = os.path.join(METRICS_DIR, f"{coin}USD_PERP_metrics.csv")
-    df = pd.read_csv(
-        path,
-        parse_dates=["create_time"],
+    """Load metrics data (OI, long/short ratios) for a coin efficiently (Parquet preferred)."""
+    parquet_path = os.path.join(METRICS_DIR, f"{coin}USD_PERP_metrics.parquet")
+    csv_path = os.path.join(METRICS_DIR, f"{coin}USD_PERP_metrics.csv")
 
-        dtype={
-            "sum_open_interest": "float64", "sum_open_interest_value": "float64",
-            "count_toptrader_long_short_ratio": "float64", "sum_toptrader_long_short_ratio": "float64",
-            "count_long_short_ratio": "float64", "sum_taker_long_short_vol_ratio": "float64"
-        }
-    )
+    if os.path.exists(parquet_path):
+        df = pd.read_parquet(parquet_path)
+    else:
+        df = pd.read_csv(
+            csv_path,
+            parse_dates=["create_time"],
+            dtype={
+                "sum_open_interest": "float64", "sum_open_interest_value": "float64",
+                "count_toptrader_long_short_ratio": "float64", "sum_toptrader_long_short_ratio": "float64",
+                "count_long_short_ratio": "float64", "sum_taker_long_short_vol_ratio": "float64"
+            }
+        )
     df["coin"] = coin
     return df
 

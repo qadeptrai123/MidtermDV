@@ -126,7 +126,7 @@ def _render_kpi_strip(candles_df: pd.DataFrame, metrics_df: pd.DataFrame, liq_df
 # PANEL 1: CANDLESTICK + MA + VOLUME
 # ============================================================
 @st.cache_resource
-def _create_candlestick_figure(coin_df: pd.DataFrame, selected_coin: str):
+def _create_candlestick_figure(cache_key: str, coin_df: pd.DataFrame, selected_coin: str):
     """Factory for the main candlestick chart."""
     # Compute MAs locally for caching
     df = coin_df.copy()
@@ -176,7 +176,9 @@ def _render_candlestick_panel(candles_df: pd.DataFrame, selected_coin: str):
     if coin_df.empty:
         st.warning("Không có dữ liệu.")
         return
-    fig = _create_candlestick_figure(coin_df, selected_coin)
+    # Use unique key to avoid DataFrame hashing in cache_resource
+    ckey = f"{selected_coin}_{coin_df.index.min()}_{coin_df.index.max()}_{len(coin_df)}"
+    fig = _create_candlestick_figure(ckey, coin_df, selected_coin)
     st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
 
 
@@ -184,7 +186,7 @@ def _render_candlestick_panel(candles_df: pd.DataFrame, selected_coin: str):
 # PANEL 2: OPEN INTEREST TIMELINE
 # ============================================================
 @st.cache_resource
-def _create_oi_figure(metrics_df: pd.DataFrame, selected_coins: list, price_df: pd.DataFrame = None, primary_coin: str = None):
+def _create_oi_figure(cache_key: str, metrics_df: pd.DataFrame, selected_coins: list, price_df: pd.DataFrame = None, primary_coin: str = None):
     """Factory for OI area chart with optional price overlay."""
     fig = go.Figure()
     colors = {"ETH": ACCENT_COLOR, "SOL": WARNING_COLOR, "DOGE": "#06b6d4"}
@@ -237,7 +239,8 @@ def _render_oi_panel(metrics_df: pd.DataFrame, selected_coins: list, candles_df:
     if show_price and candles_df is not None:
         p_df = candles_df[candles_df["coin"] == primary_coin]
         
-    fig = _create_oi_figure(metrics_df, selected_coins, p_df, primary_coin)
+    ckey = f"{selected_coins}_{primary_coin}_{show_price}_{len(metrics_df)}"
+    fig = _create_oi_figure(ckey, metrics_df, selected_coins, p_df, primary_coin)
     st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
 
 
@@ -245,7 +248,7 @@ def _render_oi_panel(metrics_df: pd.DataFrame, selected_coins: list, candles_df:
 # PANEL 3: LIQUIDATION CHART (Mirrored bars like Coinglass)
 # ============================================================
 @st.cache_resource
-def _create_liquidation_figure(liq_agg: pd.DataFrame, selected_coin: str):
+def _create_liquidation_figure(cache_key: str, liq_agg: pd.DataFrame, selected_coin: str):
     """Factory for liquidation chart."""
     coin_df = liq_agg[liq_agg["coin"] == selected_coin].copy()
     if coin_df.empty: return None
@@ -260,7 +263,8 @@ def _create_liquidation_figure(liq_agg: pd.DataFrame, selected_coin: str):
 def _render_liquidation_panel(liq_agg: pd.DataFrame, selected_coin: str):
     """Standard Liq panel."""
     st.markdown("### 🔥 Biểu Đồ Thanh Lý")
-    fig = _create_liquidation_figure(liq_agg, selected_coin)
+    ckey = f"{selected_coin}_{len(liq_agg)}"
+    fig = _create_liquidation_figure(ckey, liq_agg, selected_coin)
     if fig: st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
     else: st.warning("No data.")
 
@@ -269,7 +273,7 @@ def _render_liquidation_panel(liq_agg: pd.DataFrame, selected_coin: str):
 # PANEL 4: VOLUME PROFILE (Horizontal histogram)
 # ============================================================
 @st.cache_resource
-def _create_volume_profile_figure(coin_df: pd.DataFrame, selected_coin: str, num_bins: int):
+def _create_volume_profile_figure(cache_key: str, coin_df: pd.DataFrame, selected_coin: str, num_bins: int):
     """Factory for volume profile chart."""
     if coin_df.empty: return None
     price_min, price_max = coin_df["low"].min(), coin_df["high"].max()
@@ -290,7 +294,8 @@ def _render_volume_profile(candles_df: pd.DataFrame, selected_coin: str, num_bin
     """Standard Volume Profile panel."""
     st.markdown("### 📐 Hồ Sơ Khối Lượng (Volume Profile)")
     coin_df = candles_df[candles_df["coin"] == selected_coin].copy()
-    fig = _create_volume_profile_figure(coin_df, selected_coin, num_bins)
+    ckey = f"{selected_coin}_{num_bins}_{len(coin_df)}"
+    fig = _create_volume_profile_figure(ckey, coin_df, selected_coin, num_bins)
     if fig: st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
     else: st.warning("No data.")
 
@@ -299,7 +304,7 @@ def _render_volume_profile(candles_df: pd.DataFrame, selected_coin: str, num_bin
 # PANEL 5: PRICE CORRELATION HEATMAP
 # ============================================================
 @st.cache_resource
-def _create_correlation_figure(candles_df: pd.DataFrame):
+def _create_correlation_figure(cache_key: str, candles_df: pd.DataFrame):
     """Factory for correlation heatmap."""
     pivot = candles_df.pivot_table(index="open_time", columns="coin", values="close")
     returns = pivot.pct_change().dropna()
@@ -315,7 +320,8 @@ def _create_correlation_figure(candles_df: pd.DataFrame):
 def _render_correlation_panel(candles_df: pd.DataFrame):
     """Correlation heatmap panel."""
     st.markdown("### 🔗 Ma Trận Tương Quan Giá")
-    fig = _create_correlation_figure(candles_df)
+    ckey = f"corr_{len(candles_df)}"
+    fig = _create_correlation_figure(ckey, candles_df)
     if fig: st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
     else: st.info("Cần ít nhất 2 coin.")
 
@@ -324,7 +330,7 @@ def _render_correlation_panel(candles_df: pd.DataFrame):
 # PANEL 5b: ROLLING CORRELATION TIME SERIES
 # ============================================================
 @st.cache_resource
-def _create_rolling_corr_figure(candles_df: pd.DataFrame, window_hours: int):
+def _create_rolling_corr_figure(cache_key: str, candles_df: pd.DataFrame, window_hours: int):
     """Factory for rolling correlation chart."""
     pivot = candles_df.pivot_table(index="open_time", columns="coin", values="close")
     returns = pivot.pct_change().dropna()
@@ -352,7 +358,8 @@ def _create_rolling_corr_figure(candles_df: pd.DataFrame, window_hours: int):
 def _render_rolling_correlation_panel(candles_df: pd.DataFrame, window_hours: int = 24):
     """Standard Rolling Correlation panel."""
     st.markdown("### 📉 Tương Quan Động (Rolling Correlation)")
-    fig = _create_rolling_corr_figure(candles_df, window_hours)
+    ckey = f"rolling_{window_hours}_{len(candles_df)}"
+    fig = _create_rolling_corr_figure(ckey, candles_df, window_hours)
     if fig: st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
     else: st.info("Need at least 2 coins.")
 
@@ -361,7 +368,7 @@ def _render_rolling_correlation_panel(candles_df: pd.DataFrame, window_hours: in
 # PANEL 6: LONG/SHORT RATIO (Whale vs Overall)
 # ============================================================
 @st.cache_resource
-def _create_ls_ratio_figure(coin_df: pd.DataFrame, selected_coin: str):
+def _create_ls_ratio_figure(cache_key: str, coin_df: pd.DataFrame, selected_coin: str):
     """Factory for L/S ratio chart."""
     if coin_df.empty: return None
     fig = go.Figure()
@@ -376,7 +383,8 @@ def _render_ls_ratio_panel(metrics_df: pd.DataFrame, selected_coin: str):
     """Standard L/S panel."""
     st.markdown("### ⚖️ Tỷ Lệ Long/Short — Cá Voi vs Tổng Thể")
     coin_df = metrics_df[metrics_df["coin"] == selected_coin].sort_values("create_time")
-    fig = _create_ls_ratio_figure(coin_df, selected_coin)
+    ckey = f"{selected_coin}_{len(coin_df)}"
+    fig = _create_ls_ratio_figure(ckey, coin_df, selected_coin)
     if fig: st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
     else: st.warning("No data.")
 
@@ -385,7 +393,7 @@ def _render_ls_ratio_panel(metrics_df: pd.DataFrame, selected_coin: str):
 # PANEL 7: TAKER BUY/SELL RATIO + PRICE
 # ============================================================
 @st.cache_resource
-def _create_taker_ratio_figure(coin_candles: pd.DataFrame, coin_metrics: pd.DataFrame, selected_coin: str):
+def _create_taker_ratio_figure(cache_key: str, coin_candles: pd.DataFrame, coin_metrics: pd.DataFrame, selected_coin: str):
     """Factory for Taker ratio chart."""
     if coin_candles.empty: return None
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -402,7 +410,8 @@ def _render_taker_ratio_panel(candles_df: pd.DataFrame, metrics_df: pd.DataFrame
     st.markdown("### 💹 Tỷ Lệ Taker Mua/Bán & Giá")
     coin_candles = candles_df[candles_df["coin"] == selected_coin].copy().sort_values("open_time")
     coin_metrics = metrics_df[metrics_df["coin"] == selected_coin].copy().sort_values("create_time")
-    fig = _create_taker_ratio_figure(coin_candles, coin_metrics, selected_coin)
+    ckey = f"{selected_coin}_{len(coin_candles)}_{len(coin_metrics)}"
+    fig = _create_taker_ratio_figure(ckey, coin_candles, coin_metrics, selected_coin)
     if fig: st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
     else: st.warning("No data.")
 
@@ -490,7 +499,7 @@ def _render_market_signals_panel(candles_df: pd.DataFrame, metrics_df: pd.DataFr
 # PANEL 8.5: LIQUIDATION HEATMAP (Binance Style)
 # ============================================================
 @st.cache_resource
-def _create_liquidation_heatmap(liq_df: pd.DataFrame, candle_df: pd.DataFrame, threshold: float = 0.0):
+def _create_liquidation_heatmap(cache_key: str, liq_df: pd.DataFrame, candle_df: pd.DataFrame, threshold: float = 0.0):
     """Factory for liquidation heatmap overlay."""
     if liq_df.empty or candle_df.empty: return None
     
@@ -555,8 +564,9 @@ def _create_liquidation_heatmap(liq_df: pd.DataFrame, candle_df: pd.DataFrame, t
     )
     return fig
 
+@st.fragment
 def _render_liquidation_heatmap_panel(all_liq: pd.DataFrame, all_candles: pd.DataFrame, primary_coin: str):
-    """Heatmap panel with local threshold control."""
+    """Heatmap panel with local threshold control (Fragmented)."""
     st.markdown("### 🔥 Bản Đồ Nhiệt Thanh Lý")
     
     # Filter data for primary coin only
@@ -575,7 +585,9 @@ def _render_liquidation_heatmap_panel(all_liq: pd.DataFrame, all_candles: pd.Dat
         )
     
     if not coin_liq.empty:
-        fig = _create_liquidation_heatmap(coin_liq, coin_candles, threshold)
+        # Avoid hashing large DFs
+        ckey = f"{primary_coin}_{threshold}_{len(coin_liq)}"
+        fig = _create_liquidation_heatmap(ckey, coin_liq, coin_candles, threshold)
         if fig:
             st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
         else:
@@ -588,7 +600,7 @@ def _render_liquidation_heatmap_panel(all_liq: pd.DataFrame, all_candles: pd.Dat
 # PANEL 9: PRICE + OI + LIQUIDATION SYNCED (Multi-panel)
 # ============================================================
 @st.cache_resource
-def _create_synced_figure(coin_candles: pd.DataFrame, coin_metrics: pd.DataFrame, coin_liq: pd.DataFrame, selected_coin: str):
+def _create_synced_figure(cache_key: str, coin_candles: pd.DataFrame, coin_metrics: pd.DataFrame, coin_liq: pd.DataFrame, selected_coin: str):
     """Factory for the 3-row synced figure."""
     # Downsample
     d_candles = _downsample_df(coin_candles, 1200)
@@ -632,7 +644,8 @@ def _render_synced_panel(candles_df: pd.DataFrame, metrics_df: pd.DataFrame, liq
         st.warning("Không có dữ liệu.")
         return
 
-    fig = _create_synced_figure(coin_candles, coin_metrics, coin_liq, selected_coin)
+    ckey = f"{selected_coin}_{len(coin_candles)}_{len(coin_metrics)}_{len(coin_liq)}"
+    fig = _create_synced_figure(ckey, coin_candles, coin_metrics, coin_liq, selected_coin)
     st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
 
 
@@ -783,8 +796,8 @@ def render_dashboard(_df=None):
 
     st.markdown("---")
 
-    # ── PANEL 9: Market State Signals ──
-    _render_market_signals_panel(all_candles, all_metrics, aggregate_liquidations(all_liq, "1D"), primary_coin)
+    # Hide Market Signals as requested
+    # _render_market_signals_panel(all_candles, all_metrics, aggregate_liquidations(all_liq, "1D"), primary_coin)
 
     # Footer
     st.markdown(
