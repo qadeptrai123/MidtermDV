@@ -3,12 +3,7 @@ import pandas as pd
 import numpy as np
 
 from views import (
-    render_question_1,
-    render_question_2,
-    render_question_3,
-    render_question_4,
-    render_question_5,
-    render_dashboard,
+    render_dashboard
 )
 
 # ============================================================
