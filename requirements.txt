@@ -1,7 +1,8 @@
 streamlit
-plotly
-streamlit-echarts
 pandas
 numpy
+plotly
+streamlit-echarts
+pyecharts
 requests
-scikit-learn
+pyarrow
