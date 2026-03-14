@@ -10,6 +10,7 @@ from streamlit_echarts import st_echarts
 import pandas as pd
 import numpy as np
 import sys, os
+from pyecharts.commons.utils import JsCode
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from data_loader import (
@@ -110,7 +111,7 @@ def _render_candlestick_panel(all_candles, all_liq):
     with c2:
         coin = st.selectbox("Coin", COINS, key="cs_coin")
     with c3:
-        tf_label = st.selectbox("Khung thời gian", ["1 giờ", "4 giờ", "1 ngày"], key="cs_tf")
+        tf_label = st.selectbox("Khung thời gian", ["1 giờ", "4 giờ", "1 ngày"], key="cs_tf", index=2)
 
     if len(cs_dates) != 2:
         st.warning("Chọn đầy đủ ngày bắt đầu và kết thúc."); return
@@ -159,9 +160,20 @@ def _render_candlestick_panel(all_candles, all_liq):
             {"type": "value", "name": "Giá (USD)", "nameTextStyle": {"color": "#94a3b8"},
              "gridIndex": 0, "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE,
              "axisLine": {"show": False}, "scale": True},
-            {"type": "value", "name": "KL", "nameTextStyle": {"color": "#94a3b8"},
-             "gridIndex": 1, "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE,
-             "axisLine": {"show": False}},
+            {"type": "value", "name": "Khối lượng", "nameTextStyle": {"color": "#94a3b8"},
+             "gridIndex": 1, "splitLine": _SPLIT_LINE,
+             "axisLine": {"show": False}, "axisLabel": {
+                 **_AXIS_LABEL,  # Giữ nguyên các định dạng cũ của bạn (font, màu...)
+                 "formatter": JsCode("""
+                    function (value) {
+                        if (value >= 1000000000) return (value / 1000000000).toFixed(2) + 'B';
+                        if (value >= 1000000) return (value / 1000000).toFixed(2) + 'M';
+                        if (value >= 1000) return (value / 1000).toFixed(2) + 'K';
+                        return value;
+                    }
+                 """).js_code
+             }},
+             
         ],
         "dataZoom": [
             {"type": "slider", "xAxisIndex": [0, 1], "start": 0, "end": 100,
