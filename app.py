@@ -88,8 +88,8 @@ st.markdown(
         font-weight: 700 !important;
     }
 
-    /* ---------- Plotly chart containers ---------- */
-    [data-testid="stPlotlyChart"] {
+    /* ---------- ECharts chart containers ---------- */
+    iframe {
         background: #0d1117;
         border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 12px;
@@ -121,34 +121,8 @@ st.markdown(
 )
 
 # ============================================================
-# SIDEBAR
+# MAIN LAYOUT (No Sidebar)
 # ============================================================
-with st.sidebar:
-    st.markdown("## 📊 Data Visualization")
-    st.markdown("### Midterm Project Dashboard")
-    st.markdown("---")
-
-    selected = st.radio(
-        "**Chọn trang:**",
-        options=[
-            "📊 Dashboard",
-            "📌 Câu hỏi 1",
-            "📌 Câu hỏi 2",
-            "📌 Câu hỏi 3",
-            "📌 Câu hỏi 4",
-            "📌 Câu hỏi 5",
-        ],
-        index=0,
-        label_visibility="visible",
-    )
-
-    st.markdown("---")
-    st.markdown(
-        "<div style='text-align:center; font-size:0.75rem; opacity:0.5;'>"
-        "© 2026 – Midterm DV Project"
-        "</div>",
-        unsafe_allow_html=True,
-    )
 
 
 # ============================================================
@@ -176,13 +150,4 @@ df = load_sample_data()
 # ============================================================
 # ROUTER
 # ============================================================
-PAGES = {
-    "📊 Dashboard": render_dashboard,
-    "📌 Câu hỏi 1": render_question_1,
-    "📌 Câu hỏi 2": render_question_2,
-    "📌 Câu hỏi 3": render_question_3,
-    "📌 Câu hỏi 4": render_question_4,
-    "📌 Câu hỏi 5": render_question_5,
-}
-
-PAGES[selected](df)
+render_dashboard()

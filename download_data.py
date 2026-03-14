@@ -26,7 +26,7 @@ BASE_URL = "https://data.binance.vision/data/futures/cm/daily"
 SYMBOLS = ["ETHUSD_PERP", "DOGEUSD_PERP", "SOLUSD_PERP"]
 INTERVAL = "1h"
 START_DATE = date(2024, 1, 1)
-END_DATE = date(2024, 3, 31)
+END_DATE = date(2024, 3, 3)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CANDLES_DIR = os.path.join(SCRIPT_DIR, "candles")

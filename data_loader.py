@@ -28,15 +28,24 @@ CARD_BG = "#111827"
 TEXT_PRIMARY = "#e5e7eb"
 TEXT_SECONDARY = "#9ca3af"
 
+COIN_COLORS = {
+    "ETH": "#627eea",
+    "SOL": "#00ffa3",
+    "DOGE": "#c2a633",
+}
+
+DEFAULT_START = "2024-01-01"
+DEFAULT_END = "2024-03-03"
+
 
 # ============================================================
 # RAW DATA LOADERS
 # ============================================================
 @st.cache_data(ttl=3600)
 def load_candles(coin: str) -> pd.DataFrame:
-    """Load 5-minute candle data for a coin efficiently (Parquet preferred)."""
-    parquet_path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_5m.parquet")
-    csv_path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_5m.csv")
+    """Load 1-hour candle data for a coin efficiently (Parquet preferred)."""
+    parquet_path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_1h.parquet")
+    csv_path = os.path.join(CANDLES_DIR, f"{coin}USD_PERP_1h.csv")
     
     if os.path.exists(parquet_path):
         df = pd.read_parquet(parquet_path)
@@ -131,9 +140,9 @@ def load_all_metrics() -> pd.DataFrame:
 def resample_candles(df: pd.DataFrame, freq: str = "1h") -> pd.DataFrame:
     """
     Resample OHLCV candle data to a coarser frequency.
-    freq: '5min', '1h', '4h', '1D'
+    freq: '1h', '4h', '1D'
     """
-    if freq == "5min":
+    if freq == "1h":
         return df.copy()
 
     resampled_frames = []
@@ -163,7 +172,7 @@ def resample_candles(df: pd.DataFrame, freq: str = "1h") -> pd.DataFrame:
 
 def resample_metrics(df: pd.DataFrame, freq: str = "1h") -> pd.DataFrame:
     """Resample metrics data to a coarser frequency."""
-    if freq == "5min":
+    if freq == "1h":
         return df.copy()
 
     resampled_frames = []
@@ -275,10 +284,10 @@ def compute_liquidation_imbalance(liq_agg: pd.DataFrame) -> pd.DataFrame:
     return pivot
 
 
-def compute_rolling_correlation(candles_df: pd.DataFrame, window: int = 7 * 288) -> pd.DataFrame:
+def compute_rolling_correlation(candles_df: pd.DataFrame, window: int = 7 * 24) -> pd.DataFrame:
     """
     Compute rolling correlation of returns between coins.
-    window: number of candles (7 days * 288 candles/day for 5min data).
+    window: number of candles (7 days * 24 candles/day for 1h data).
     Returns a long-format DataFrame with pairs and rolling correlation values.
     """
     # Pivot to get returns for each coin
@@ -348,14 +357,12 @@ def get_dashboard_data(selected_coins, start_date, end_date, freq):
 # TIMEFRAME MAPPING
 # ============================================================
 TIMEFRAME_MAP = {
-    "5 phút": "5min",
     "1 giờ": "1h",
     "4 giờ": "4h",
     "1 ngày": "1D",
 }
 
 FREQ_MAP = {
-    "5 phút": "5min",
     "1 giờ": "1h",
     "4 giờ": "4h",
     "1 ngày": "1D",
