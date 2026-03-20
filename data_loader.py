@@ -19,14 +19,14 @@ CANDLES_DIR = os.path.join(DATA_DIR, "candles")
 LIQUID_DIR = os.path.join(DATA_DIR, "liquid")
 METRICS_DIR = os.path.join(DATA_DIR, "detail")
 
-BULL_COLOR = "#00d4aa"
-BEAR_COLOR = "#ff4976"
-ACCENT_COLOR = "#6366f1"
-WARNING_COLOR = "#f59e0b"
-BG_COLOR = "#0a0e17"
-CARD_BG = "#111827"
-TEXT_PRIMARY = "#e5e7eb"
-TEXT_SECONDARY = "#9ca3af"
+BULL_COLOR = "#00b08b"  # Slightly darker for visibility on white
+BEAR_COLOR = "#e53e3e"
+ACCENT_COLOR = "#4f46e5"
+WARNING_COLOR = "#d97706"
+BG_COLOR = "#ffffff"
+CARD_BG = "#f8fafc"
+TEXT_PRIMARY = "#1e293b"
+TEXT_SECONDARY = "#64748b"
 
 COIN_COLORS = {
     "ETH": "#627eea",

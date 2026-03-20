@@ -26,7 +26,7 @@ BASE_URL = "https://data.binance.vision/data/futures/cm/daily"
 SYMBOLS = ["ETHUSD_PERP", "DOGEUSD_PERP", "SOLUSD_PERP"]
 INTERVAL = "1h"
 START_DATE = date(2024, 1, 1)
-END_DATE = date(2024, 3, 3)
+END_DATE = date(2024, 3, 6)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CANDLES_DIR = os.path.join(SCRIPT_DIR, "candles")
@@ -271,8 +271,9 @@ if __name__ == "__main__":
     print("  All downloads complete!")
     print("=" * 60)
     for label, paths in [("Candles", candle_paths),
-                         ("Liquidation", liquid_paths),
-                         ("Metrics", detail_paths)]:
+    ]:
+                        #  ("Liquidation", liquid_paths),
+                        #  ("Metrics", detail_paths)]:
         print(f"\n  {label}:")
         for sym, p in paths.items():
             print(f"    {sym} -> {p}")
