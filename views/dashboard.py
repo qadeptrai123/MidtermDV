@@ -300,7 +300,13 @@ def _render_oi_panel(all_metrics):
         if is_percent_mode:
             base_oi = df["sum_open_interest_value"].dropna().iloc[0] if not df["sum_open_interest_value"].dropna().empty else 1
             if base_oi == 0: base_oi = 1
-            vals = [(round((t_map.get(t) or 0 - base_oi) / base_oi * 100, 2) if t_map.get(t) is not None else None) for t in all_times]
+            vals = []
+            for t in all_times:
+                v = t_map.get(t)
+                if v is None:
+                    vals.append(None)
+                else:
+                    vals.append(round((v - base_oi) / base_oi * 100, 2))
         else:
             vals = [round(t_map.get(t) or 0, 2) for t in all_times]
         coin_data[coin] = vals
@@ -564,7 +570,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
                 "link": [{"xAxisIndex": "all"}],       # sync across both rows
             },
         },
-        "legend": {**_LEGEND, "data": ["Short", "Long", "Imbalance (L-S)", f"{price_coin} Price"]},
+        "legend": {**_LEGEND, "data": ["Short", "Long", "Mất cân bằng %", f"Giá {price_coin} (USD)"]},
         # Two-row grid: row 0 = Imbalance %, row 1 = Liquidation + Price (no overlap)
         "grid": [
             {"left": "6%", "right": "6%", "top": "8%", "height": "28%"},
@@ -602,7 +608,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
         ],
         "series": [
             # Imbalance in top row
-            {"name": "Imbalance (L-S)", "type": "line",
+            {"name": "Mất cân bằng (L-S)", "type": "line",
              "xAxisIndex": 0, "yAxisIndex": 0,
              "data": imbalance_vals,
              "smooth": True, "symbol": "circle", "symbolSize": 6,
@@ -780,7 +786,7 @@ def _render_volume_profile(all_candles, num_bins=50):
     option = {
         "backgroundColor": _BG, "tooltip": {**_TOOLTIP, "trigger": "axis"},
         "grid": {"left": "12%", "right": "6%", "top": "10%", "bottom": "10%"},
-        "xAxis": {"type": "value", "name": "Khối lượng tích lũy", "nameTextStyle": {"color": "#fafafa"},
+        "xAxis": {"type": "value", "name": "Khối lượng tích lũy (USD)", "nameTextStyle": {"color": "#fafafa"},
                   "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE},
         "yAxis": {"type": "category", "data": y_labels, "axisLine": _AXIS_LINE, "axisLabel": _AXIS_LABEL},
         "series": [
@@ -792,7 +798,7 @@ def _render_volume_profile(all_candles, num_bins=50):
                     "symbol": "none",
                     "data": [{"yAxis": poc_idx}],
                     "label": {
-                        "formatter": f"POC  {_fmt_price(poc_price)}",
+                        "formatter": f"Point-of-Control (POC)  {_fmt_price(poc_price)}",
                         "color": WARNING_COLOR,
                         "fontWeight": "bold",
                         "backgroundColor": "rgba(245,158,11,0.15)",
@@ -1116,6 +1122,7 @@ def _render_synced_panel(all_candles, all_metrics, all_liq):
     else:
         o_min, o_max, o_range = 0, 1, 1
 
+    coin_color = COIN_COLORS.get(coin, ACCENT_COLOR)
     option = {
         "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
         "grid": {"left": "6%", "right": "6%", "top": "12%", "bottom": "12%"},
@@ -1125,7 +1132,7 @@ def _render_synced_panel(all_candles, all_metrics, all_liq):
             {"type": "value", "name": "Giá (USD)", "nameTextStyle": {"color": WARNING_COLOR},
              "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE, "scale": True,
              "min": round(p_min - p_range * 0.05, 2), "max": round(p_max + p_range * 0.05, 2)},
-            {"type": "value", "name": "OI (USD)", "nameTextStyle": {"color": BULL_COLOR},
+            {"type": "value", "name": "OI (USD)", "nameTextStyle": {"color": coin_color},
              "position": "right", "axisLabel": _AXIS_LABEL, "splitLine": {"show": False},
              "min": round(o_min - o_range * 0.05, 2), "max": round(o_max + o_range * 0.05, 2)},
         ],
@@ -1137,12 +1144,12 @@ def _render_synced_panel(all_candles, all_metrics, all_liq):
             {"name": "OI", "type": "line", "yAxisIndex": 1,
              "data": [round(v, 2) if v is not None and not np.isnan(v) else None for v in oi_vals],
              "smooth": True, "symbol": "none",
-             "lineStyle": {"color": BULL_COLOR, "width": 2},
+             "lineStyle": {"color": coin_color, "width": 2},
              "areaStyle": {
                  "color": {
                      "type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
                      "colorStops": [
-                         {"offset": 0, "color": "rgba(0,176,139,0.22)"},
+                         {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.18)"},
                          {"offset": 1, "color": "rgba(0,0,0,0)"},
                      ],
                  }
@@ -1471,12 +1478,13 @@ def _render_oi_volume_panel(all_candles, all_metrics):
 
     # ── Week-over-week % changes ──
     weekly = merged.groupby("week").agg(
-        vol_start=("volume", "first"), vol_end=("volume", "last"),
+        vol_start=("volume", "sum"), vol_end=("volume", "sum"),
         oi_start=("oi", "first"), oi_end=("oi", "last"),
         week_start=("week_start", "first"), n_days=("date", "count")
     ).reset_index()
     weekly = weekly[weekly["n_days"] >= 4].copy()
-    weekly["vol_chg"] = ((weekly["vol_end"] - weekly["vol_start"]) / weekly["vol_start"] * 100).round(1)
+    weekly["vol_sum"] = weekly["vol_end"]  # weekly total volume (sum of all days in week)
+    weekly["vol_chg"] = weekly["vol_sum"].pct_change().mul(100).round(1)  # current week vs previous week
     weekly["oi_chg"] = ((weekly["oi_end"] - weekly["oi_start"]) / weekly["oi_start"] * 100).round(1)
     weekly["corr"] = [
         round(merged[merged["week"] == w]["volume"].corr(merged[merged["week"] == w]["oi"]), 3)
@@ -1514,7 +1522,7 @@ def _render_oi_volume_panel(all_candles, all_metrics):
             "splitLine": {"show": False},
         },
         "yAxis": [
-            {"type": "value", "name": "Volume (M USD)", "nameTextStyle": {"color": "#fafafa"},
+            {"type": "value", "name": "Khối lượng giao dịch (M USD)", "nameTextStyle": {"color": "#fafafa"},
              "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M"},
              "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
             {"type": "value", "name": "OI (M USD)", "nameTextStyle": {"color": coin_color},
@@ -1560,7 +1568,7 @@ def _render_oi_volume_panel(all_candles, all_metrics):
 
     table_md = "| Tuần | Ngày | Vol % | OI % | Corr | Nhận xét |\n" + \
                "|:---:|:---:|:---:|:---:|:---:|:---|\n"
-    for _, row in weekly.iterrows():
+    for _, row in weekly.dropna(subset=["vol_chg"]).iterrows():
         vol_sgn = vol_color(row["vol_chg"])
         oi_sgn  = oi_color(row["oi_chg"])
         corr_v  = row["corr"] if row["corr"] is not None else "–"
@@ -1617,7 +1625,7 @@ def render_dashboard(_df=None):
         all_liq = load_all_liquidations()
         all_metrics = load_all_metrics()
 
-    _render_kpi_strip(all_candles, all_metrics, all_liq)
+    # _render_kpi_strip(all_candles, all_metrics, all_liq)
     st.markdown("---")
     _render_candlestick_panel(all_candles, all_liq)
     st.markdown("---")
@@ -1657,7 +1665,7 @@ def render_dashboard(_df=None):
     # _render_candle_stats_panel(all_candles)
     # st.markdown("---")
 
-    _render_tail_stats_panel(all_candles, all_metrics)
+    # _render_tail_stats_panel(all_candles, all_metrics)
 
     st.markdown(
         """<div style="text-align:center; padding:2rem 0 1rem 0; opacity:0.35; font-size:0.7rem;">
