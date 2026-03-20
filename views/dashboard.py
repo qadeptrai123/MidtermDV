@@ -290,46 +290,69 @@ def _render_oi_panel(all_metrics):
     all_times = sorted(resampled["create_time"].unique())
     x = [t.strftime("%d/%m %H:%M") if isinstance(t, pd.Timestamp) else str(t) for t in all_times]
 
-    series = []
+    # ── Step 1: collect all raw OI values across all coins to determine scale ──
+    all_vals_raw = []
+    coin_data = {}
     for coin in coins:
         df = resampled[resampled["coin"] == coin].sort_values("create_time")
         if df.empty: continue
         t_map = {t: v for t, v in zip(df["create_time"], df["sum_open_interest_value"])}
-
         if is_percent_mode:
-            # Base = each coin's first non-null OI value in the window
             base_oi = df["sum_open_interest_value"].dropna().iloc[0] if not df["sum_open_interest_value"].dropna().empty else 1
-            if base_oi == 0:
-                base_oi = 1
-            # Build % list, force first non-null entry to exactly 0
-            vals = [(round((t_map.get(t, None) or 0 - base_oi) / base_oi * 100, 2) if t_map.get(t, None) is not None else None) for t in all_times]
-            first_idx = next((i for i, v in enumerate(vals) if v is not None), None)
-            if first_idx is not None:
-                vals[first_idx] = 0.0
+            if base_oi == 0: base_oi = 1
+            vals = [(round((t_map.get(t) or 0 - base_oi) / base_oi * 100, 2) if t_map.get(t) is not None else None) for t in all_times]
         else:
-            vals = [round(t_map.get(t, None) or 0, 2) for t in all_times]
-
-        color = COIN_COLORS.get(coin, ACCENT_COLOR)
-        s = {"name": coin, "type": "line", "data": vals, "smooth": True, "symbol": "none",
-             "lineStyle": {"color": color, "width": 2},
-             "areaStyle": {"color": {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
-                "colorStops": [{"offset": 0, "color": color.replace(")", ",0.18)").replace("#", "rgba(") if color.startswith("rgba") else f"rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.18)"},
-                               {"offset": 1, "color": "rgba(0,0,0,0)"}]}}}
-        series.append(s)
+            vals = [round(t_map.get(t) or 0, 2) for t in all_times]
+        coin_data[coin] = vals
+        all_vals_raw.extend([v for v in vals if v is not None])
 
     if is_percent_mode:
         y_axis_formatter = "{value}%"
         y_axis_name_fmt = "% thay đổi"
+        scale = 1
     else:
-        y_axis_formatter = "function(p) { if (p >= 1e9) return (p/1e9).toFixed(1)+'B'; if (p >= 1e6) return (p/1e6).toFixed(1)+'M'; if (p >= 1e3) return (p/1e3).toFixed(0)+'K'; return p; }"
-        y_axis_name_fmt = "OI (USD)"
+        # Determine scale from all data
+        oi_max = max(all_vals_raw) if all_vals_raw else 1
+        if oi_max >= 1e9:
+            scale = 1e9; suffix = "B"; y_axis_name_fmt = "OI (B USD)"
+        elif oi_max >= 1e6:
+            scale = 1e6; suffix = "M"; y_axis_name_fmt = "OI (M USD)"
+        elif oi_max >= 1e3:
+            scale = 1e3; suffix = "K"; y_axis_name_fmt = "OI (K USD)"
+        else:
+            scale = 1; suffix = ""; y_axis_name_fmt = "OI (USD)"
+        y_axis_formatter = "{value}"
+
+    # ── Step 2: build series, applying scale only in normal mode ──
+    series = []
+    for coin, raw_vals in coin_data.items():
+        if not is_percent_mode:
+            scaled_vals = [round(v / scale, 2) if v is not None else None for v in raw_vals]
+        else:
+            # In % mode: force first non-null entry to exactly 0
+            scaled_vals = raw_vals[:]
+            first_idx = next((i for i, v in enumerate(scaled_vals) if v is not None), None)
+            if first_idx is not None:
+                scaled_vals[first_idx] = 0.0
+        color = COIN_COLORS.get(coin, ACCENT_COLOR)
+        series.append({
+            "name": coin, "type": "line", "data": scaled_vals, "smooth": True, "symbol": "none",
+            "lineStyle": {"color": color, "width": 2},
+            "areaStyle": {"color": {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
+                "colorStops": [
+                    {"offset": 0, "color": f"rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.18)"},
+                    {"offset": 1, "color": "rgba(0,0,0,0)"},
+                ]}},
+        })
 
     option = {
         "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
         "grid": _GRID,
-        "xAxis": {"type": "category", "data": x, "axisLine": _AXIS_LINE, "axisLabel": {**_AXIS_LABEL, "interval": max(0, len(x)//12-1)}, "splitLine": {"show": False}},
+        "xAxis": {"type": "category", "data": x, "axisLine": _AXIS_LINE,
+                  "axisLabel": {**_AXIS_LABEL, "interval": max(0, len(x)//12-1)}, "splitLine": {"show": False}},
         "yAxis": {"type": "value", "name": y_axis_name_fmt, "nameTextStyle": {"color": "#fafafa"},
-                  "axisLabel": {**_AXIS_LABEL, "formatter": y_axis_formatter}, "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
+                  "axisLabel": {**_AXIS_LABEL, "formatter": y_axis_formatter},
+                  "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
         "series": series,
         "dataZoom": _DATAZOOM,
     }
@@ -1479,9 +1502,6 @@ def _render_oi_volume_panel(all_candles, all_metrics):
 
     x_labels = [d.strftime("%d/%m") for d in merged["date"]]
     coin_color = COIN_COLORS.get(corr_coin, ACCENT_COLOR)
-    vol_max = max(merged["volume"]) if len(merged["volume"]) > 0 else 1
-    vol_scale = 1e9 if vol_max >= 1e9 else (1e6 if vol_max >= 1e6 else 1e3)
-    vol_suffix = "B" if vol_max >= 1e9 else ("M" if vol_max >= 1e6 else "K")
 
     option = {
         "backgroundColor": _BG, "tooltip": _TOOLTIP,
@@ -1494,18 +1514,17 @@ def _render_oi_volume_panel(all_candles, all_metrics):
             "splitLine": {"show": False},
         },
         "yAxis": [
-            {"type": "value", "name": f"Volume ({vol_suffix} USD)", "nameTextStyle": {"color": "#fafafa"},
-             "axisLabel": {
-                 **_AXIS_LABEL,
-                 "formatter": f"function(p) {{ if (p >= 1e9) return (p/{1e9}).toFixed(1)+'B'; if (p >= 1e6) return (p/{1e6}).toFixed(1)+'M'; if (p >= 1e3) return (p/{1e3}).toFixed(0)+'K'; return p; }}"
-             }, "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
-            {"type": "value", "name": "OI (USD)", "nameTextStyle": {"color": coin_color},
-             "position": "right", "axisLabel": {"color": coin_color, "fontSize": 15},
+            {"type": "value", "name": "Volume (M USD)", "nameTextStyle": {"color": "#fafafa"},
+             "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M"},
+             "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
+            {"type": "value", "name": "OI (M USD)", "nameTextStyle": {"color": coin_color},
+             "position": "right",
+             "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M", "color": coin_color},
              "splitLine": {"show": False}, "axisLine": {"show": False}},
         ],
         "series": [
             {
-                "name": f"Volume ({vol_suffix})", "type": "bar", "data": vol_data,
+                "name": "Volume (M)", "type": "bar", "data": vol_data,
                 "barMaxWidth": 20, "z": 1,
             },
             {
