@@ -798,7 +798,7 @@ def _render_volume_profile(all_candles, num_bins=50):
                     "symbol": "none",
                     "data": [{"yAxis": poc_idx}],
                     "label": {
-                        "formatter": f"Point-of-Control (POC)  {_fmt_price(poc_price)}",
+                        "formatter": f"POC {_fmt_price(poc_price)}",
                         "color": WARNING_COLOR,
                         "fontWeight": "bold",
                         "backgroundColor": "rgba(245,158,11,0.15)",
@@ -1149,7 +1149,7 @@ def _render_synced_panel(all_candles, all_metrics, all_liq):
                  "color": {
                      "type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
                      "colorStops": [
-                         {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.18)"},
+                         {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.4)"},
                          {"offset": 1, "color": "rgba(0,0,0,0)"},
                      ],
                  }
