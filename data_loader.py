@@ -23,6 +23,7 @@ BULL_COLOR = "#00b08b"  # Slightly darker for visibility on white
 BEAR_COLOR = "#e53e3e"
 ACCENT_COLOR = "#4f46e5"
 WARNING_COLOR = "#d97706"
+VOL_COLOR = "#00e5cc"
 BG_COLOR = "#ffffff"
 CARD_BG = "#f8fafc"
 TEXT_PRIMARY = "#1e293b"

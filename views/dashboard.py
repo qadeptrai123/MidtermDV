@@ -22,7 +22,7 @@ from data_loader import (
     compute_liquidation_imbalance, compute_rolling_correlation,
     filter_by_date, filter_by_coins,
     COINS, TIMEFRAME_MAP, FREQ_MAP,
-    BULL_COLOR, BEAR_COLOR, ACCENT_COLOR, WARNING_COLOR,
+    BULL_COLOR, BEAR_COLOR, ACCENT_COLOR, WARNING_COLOR, VOL_COLOR,
     BG_COLOR, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY,
     COIN_COLORS, DEFAULT_START, DEFAULT_END,
 )
@@ -42,6 +42,7 @@ _TOOLTIP = {
     "borderWidth": 1,
     "textStyle": {"color": "#e2e8f0", "fontSize": 15},
 }
+_TOOLTIP_NONE = {"show": False}
 _AXIS_LINE = {"lineStyle": {"color": "rgba(255,255,255,0.1)"}}
 _AXIS_LABEL = {"color": "#fafafa", "fontSize": 15}
 _SPLIT_LINE = {"lineStyle": {"color": "rgba(255,255,255,0.05)"}}
@@ -92,7 +93,7 @@ def _ts_labels(series, fmt="%d/%m %H:%M"):
 # PANEL 0 – KPI STRIP (no chart changes needed)
 # ──────────────────────────────────────────────────────────────
 def _render_kpi_strip(all_candles, all_metrics, all_liq):
-    st.markdown("### 📈 Tổng Quan Thị Trường")
+    st.markdown("### 📈 Tổng quan thị trường")
     
     start_date, end_date = pd.Timestamp(DEFAULT_START), pd.Timestamp(DEFAULT_END)
     selected_coins = COINS
@@ -122,7 +123,7 @@ def _render_kpi_strip(all_candles, all_metrics, all_liq):
 # PANEL 1 – CANDLESTICK + MA + VOLUME + LIQ HEATMAP (ECharts)
 # ──────────────────────────────────────────────────────────────
 def _render_candlestick_panel(all_candles, all_liq):
-    st.markdown("### 🕯️ Biểu Đồ Nến & Khối Lượng")
+    st.markdown("### 🕯️ Biểu đồ nến & khối lượng")
     c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
     with c1:
         cs_dates = st.date_input(
@@ -260,7 +261,7 @@ def _render_candlestick_panel(all_candles, all_liq):
 # PANEL 2 – OPEN INTEREST (ECharts)
 # ──────────────────────────────────────────────────────────────
 def _render_oi_panel(all_metrics):
-    st.markdown("### 📊 Open Interest")
+    st.markdown("### 📊 Open interest")
     c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
     with c1:
         oi_dates = st.date_input(
@@ -271,105 +272,90 @@ def _render_oi_panel(all_metrics):
     with c2:
         coins = _coin_selector("Coins", "oi_coins")
     with c3:
-        oi_tf = st.selectbox("Khung giờ", ["1h", "4h", "12h", "1 ngày"], index=0, key="oi_tf")
-    with c4:
-        oi_mode = st.radio("Chế độ", ["Thường", "% Thay đổi"], horizontal=True, key="oi_mode")
+        oi_tf = st.selectbox("Khung giờ", ["5p", "4h", "12h", "1 ngày"], index=0, key="oi_tf")
 
     if len(oi_dates) != 2:
         st.warning("Chọn đầy đủ ngày bắt đầu và kết thúc."); return
     start_date, end_date = pd.Timestamp(oi_dates[0]), pd.Timestamp(oi_dates[1])
 
-    oi_tf_map = {"1h": "1h", "4h": "4h", "12h": "12h", "1 ngày": "1D"}
+    oi_tf_map = {"5p": "1h", "4h": "4h", "12h": "12h", "1 ngày": "1D"}
     freq = oi_tf_map[oi_tf]
 
     metrics_f = filter_by_date(filter_by_coins(all_metrics, coins), start_date, end_date, "create_time")
     resampled = resample_metrics(metrics_f, freq)
 
-    is_percent_mode = (oi_mode == "% Thay đổi")
-
     all_times = sorted(resampled["create_time"].unique())
     x = [t.strftime("%d/%m %H:%M") if isinstance(t, pd.Timestamp) else str(t) for t in all_times]
 
-    # ── Step 1: collect all raw OI values across all coins to determine scale ──
-    all_vals_raw = []
+    # ── Step 1: collect all OI values as % change from first point ──
     coin_data = {}
     for coin in coins:
         df = resampled[resampled["coin"] == coin].sort_values("create_time")
         if df.empty: continue
         t_map = {t: v for t, v in zip(df["create_time"], df["sum_open_interest_value"])}
-        if is_percent_mode:
-            base_oi = df["sum_open_interest_value"].dropna().iloc[0] if not df["sum_open_interest_value"].dropna().empty else 1
-            if base_oi == 0: base_oi = 1
-            vals = []
-            for t in all_times:
-                v = t_map.get(t)
-                if v is None:
-                    vals.append(None)
-                else:
-                    vals.append(round((v - base_oi) / base_oi * 100, 2))
-        else:
-            vals = [round(t_map.get(t) or 0, 2) for t in all_times]
+        base_oi = df["sum_open_interest_value"].dropna().iloc[0] if not df["sum_open_interest_value"].dropna().empty else 1
+        if base_oi == 0: base_oi = 1
+        vals = []
+        for t in all_times:
+            v = t_map.get(t)
+            if v is None:
+                vals.append(None)
+            else:
+                vals.append(round((v - base_oi) / base_oi * 100, 2))
         coin_data[coin] = vals
-        all_vals_raw.extend([v for v in vals if v is not None])
 
-    if is_percent_mode:
-        y_axis_formatter = "{value}%"
-        y_axis_name_fmt = "% thay đổi"
-        scale = 1
-    else:
-        # Determine scale from all data
-        oi_max = max(all_vals_raw) if all_vals_raw else 1
-        if oi_max >= 1e9:
-            scale = 1e9; suffix = "B"; y_axis_name_fmt = "OI (B USD)"
-        elif oi_max >= 1e6:
-            scale = 1e6; suffix = "M"; y_axis_name_fmt = "OI (M USD)"
-        elif oi_max >= 1e3:
-            scale = 1e3; suffix = "K"; y_axis_name_fmt = "OI (K USD)"
-        else:
-            scale = 1; suffix = ""; y_axis_name_fmt = "OI (USD)"
-        y_axis_formatter = "{value}"
-
-    # ── Step 2: build series, applying scale only in normal mode ──
+    # ── Step 2: build series ──
     series = []
     for coin, raw_vals in coin_data.items():
-        if not is_percent_mode:
-            scaled_vals = [round(v / scale, 2) if v is not None else None for v in raw_vals]
-        else:
-            # In % mode: force first non-null entry to exactly 0
-            scaled_vals = raw_vals[:]
-            first_idx = next((i for i, v in enumerate(scaled_vals) if v is not None), None)
-            if first_idx is not None:
-                scaled_vals[first_idx] = 0.0
+        scaled_vals = raw_vals[:]
+        first_idx = next((i for i, v in enumerate(scaled_vals) if v is not None), None)
+        if first_idx is not None:
+            scaled_vals[first_idx] = 0.0
         color = COIN_COLORS.get(coin, ACCENT_COLOR)
         series.append({
             "name": coin, "type": "line", "data": scaled_vals, "smooth": True, "symbol": "none",
             "lineStyle": {"color": color, "width": 2},
+            "itemStyle": {"color": color},
             "areaStyle": {"color": {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
                 "colorStops": [
                     {"offset": 0, "color": f"rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.18)"},
-                    {"offset": 1, "color": "rgba(0,0,0,0)"},
+                    # {"offset": 1, "color": "rgba(0,0,0,0)"},
                 ]}},
         })
 
     option = {
-        "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
+        "backgroundColor": _BG, "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "cross", "show": True, "crossStyle": {"color": "rgba(255,255,255,0.2)"}, "link": [{"xAxisIndex": "all"}]},
+            "backgroundColor": "rgba(15, 23, 42, 0.95)",
+            "borderColor": "rgba(124, 92, 252, 0.3)",
+            "borderWidth": 1,
+            "textStyle": {"color": "#e2e8f0", "fontSize": 15},
+            "formatter": JsCode(
+                "function(params){"
+                "  if(!params||!params.length)return '';"
+                "  return '<div style=\"font-size:13px;color:#94a3b8;margin-bottom:4px\">'+params[0].axisValue+'</div>'+"
+                "    params.map(function(p){return '<div style=\"color:'+p.color+';font-weight:bold\">'+p.seriesName+': '+p.value+'%</div>';}).join('');"
+                "}"
+            ).js_code,
+        }, "legend": _LEGEND,
         "grid": _GRID,
         "xAxis": {"type": "category", "data": x, "axisLine": _AXIS_LINE,
                   "axisLabel": {**_AXIS_LABEL, "interval": max(0, len(x)//12-1)}, "splitLine": {"show": False}},
-        "yAxis": {"type": "value", "name": y_axis_name_fmt, "nameTextStyle": {"color": "#fafafa"},
-                  "axisLabel": {**_AXIS_LABEL, "formatter": y_axis_formatter},
+        "yAxis": {"type": "value", "name": "% thay đổi", "nameTextStyle": {"color": "#fafafa"},
+                  "axisLabel": {**_AXIS_LABEL, "formatter": "{value}%"},
                   "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
         "series": series,
         "dataZoom": _DATAZOOM,
     }
-    st_echarts(options=option, height="500px", key=f"oi_ec_{freq}_{oi_mode}")
+    st_echarts(options=option, height="500px", key=f"oi_ec_{freq}")
 
 
 # ──────────────────────────────────────────────────────────────
 # PANEL 3 – LIQUIDATION (ECharts – Coinglass style)
 # ──────────────────────────────────────────────────────────────
 def _render_liquidation_echarts(all_liq, all_candles):
-    st.markdown("### Biểu Đồ Thanh Lý")
+    st.markdown("### Biểu đồ thanh lý")
     lc1, lc2, lc3 = st.columns([1, 2, 1])
     with lc1:
         liq_coin = st.selectbox("Coin", COINS, key="liq_coin")
@@ -570,7 +556,15 @@ def _render_liquidation_echarts(all_liq, all_candles):
                 "link": [{"xAxisIndex": "all"}],       # sync across both rows
             },
         },
-        "legend": {**_LEGEND, "data": ["Short", "Long", "Mất cân bằng %", f"Giá {price_coin} (USD)"]},
+        "legend": {
+            **_LEGEND,
+            "data": [
+                {"name": "Short", "icon": "roundRect", "itemStyle": {"color": "#ff3d71"}},
+                {"name": "Long", "icon": "roundRect", "itemStyle": {"color": "#00e5cc"}},
+                {"name": "Mất cân bằng %", "icon": "circle", "itemStyle": {"color": "#a855f7"}},
+                {"name": f"Giá {price_coin}", "icon": "circle", "itemStyle": {"color": WARNING_COLOR}},
+            ]
+        },
         # Two-row grid: row 0 = Imbalance %, row 1 = Liquidation + Price (no overlap)
         "grid": [
             {"left": "6%", "right": "6%", "top": "8%", "height": "28%"},
@@ -587,7 +581,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
         ],
         "yAxis": [
             # Row 0 — Imbalance %
-            {"type": "value", "name": "Imbalance %", "gridIndex": 0,
+            {"type": "value", "name": "Mất cân bằng %", "gridIndex": 0,
              "nameTextStyle": {"color": "#a855f7", "fontSize": 15},
              "axisLabel": {**_AXIS_LABEL, "formatter": "{value}%"},
              "axisLine": {"show": False}, "splitLine": {"show": False},
@@ -599,7 +593,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
              "axisLine": {"show": False}, "splitLine": _SPLIT_LINE,
              "max": round(max_liq * 1.15, 4)},
             # Row 1 — Price (right)
-            {"type": "value", "name": f"Giá {price_coin} (USD)", "gridIndex": 1,
+            {"type": "value", "name": f"Giá {price_coin}", "gridIndex": 1,
              "nameTextStyle": {"color": "#fafafa", "fontSize": 15},
              "position": "right",
              "axisLabel": {**_AXIS_LABEL, "formatter": "${value}"},
@@ -732,7 +726,7 @@ def _render_liq_imbalance_panel(all_liq, all_candles):
 # PANEL 4 – VOLUME PROFILE (ECharts)
 # ──────────────────────────────────────────────────────────────
 def _render_volume_profile(all_candles, num_bins=50):
-    st.markdown("### 📐 Hồ Sơ Khối Lượng (Volume Profile)")
+    st.markdown("### 📐 Hồ sơ khối lượng")
     c1, p4c2 = st.columns([3, 1])
     with c1:
         vp_dates = st.date_input(
@@ -763,22 +757,63 @@ def _render_volume_profile(all_candles, num_bins=50):
     poc_row_idx = int(vol_profile["volume"].idxmax())
     poc_price = float(vol_profile.loc[poc_row_idx, "price_level"])
 
-    total_vol = vol_profile["volume"].sum()
-    sorted_vp = vol_profile.sort_values("volume", ascending=False)
-    cumsum = sorted_vp["volume"].cumsum()
-    va_mask = cumsum <= total_vol * 0.7
-    va_prices = sorted_vp[va_mask]["price_level"] if va_mask.any() else pd.Series([poc_price])
-    va_high, va_low = float(va_prices.max()), float(va_prices.min())
+    total_vol = float(vol_profile["volume"].sum())
+    if total_vol == 0:
+        st.warning("Không có dữ liệu khối lượng."); return
+
+    # ── Standard Volume Profile VA algorithm (starts from POC, expands outward) ──
+    # 1. POC: bin with highest volume (already found above as poc_row_idx)
+    # 2. Sort by price and expand outward from POC toward higher-volume adjacent bins
+    levels = vol_profile.sort_values("price_level").reset_index(drop=True)
+    n = len(levels)
+    poc_pos = int(levels[levels["price_level"] == poc_price].index[0])
+
+    va_start, va_end = poc_pos, poc_pos
+    va_sum = float(levels.loc[poc_pos, "volume"])
+    target = total_vol * 0.7
+
+    while va_sum < target and (va_start > 0 or va_end < n - 1):
+        vol_left  = float(levels.loc[va_start, "volume"]) if va_start > 0 else -1
+        vol_right = float(levels.loc[va_end,   "volume"]) if va_end   < n-1 else -1
+        if vol_left >= vol_right and va_start > 0:
+            va_start -= 1
+            va_sum += vol_left
+        elif va_end < n - 1:
+            va_end += 1
+            va_sum += vol_right
+        else:
+            break
+
+    va_low  = float(levels.loc[va_start, "price_level"])
+    va_high = float(levels.loc[va_end,   "price_level"])
 
     y_labels = [_fmt_price(pl) for pl in vol_profile["price_level"]]
+
+    # Scale volume to readable K/M for x-axis
+    raw_vols = vol_profile["volume"].tolist()
+    vol_max = max(raw_vols) if raw_vols else 1
+    if vol_max >= 1e9:
+        vol_scaled = [round(v / 1e9, 2) for v in raw_vols]
+        vol_suffix = "B"
+    elif vol_max >= 1e6:
+        vol_scaled = [round(v / 1e6, 2) for v in raw_vols]
+        vol_suffix = "M"
+    else:
+        vol_scaled = [round(v / 1e3, 1) for v in raw_vols]
+        vol_suffix = "K"
+
     bar_data = []
-    for _, row in vol_profile.iterrows():
+    for i, (_, row) in enumerate(vol_profile.iterrows()):
         pl = float(row["price_level"])
+        coin_color = COIN_COLORS.get(coin, ACCENT_COLOR)
         if va_low <= pl <= va_high:
-            color = ACCENT_COLOR    # 🟣 tím — trong Value Area 70%
+            color = coin_color
         else:
-            color = "rgba(124,92,252,0.12)"  # ⬜ tím nhạt — ngoài VA
-        bar_data.append({"value": round(row["volume"], 2), "itemStyle": {"color": color}})
+            color = f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.12)"
+        bar_data.append({
+            "value": [vol_scaled[i], _fmt_price(pl)],
+            "itemStyle": {"color": color}
+        })
 
     # poc_row_idx is the exact category index — no string lookup needed
     poc_idx = poc_row_idx
@@ -786,8 +821,8 @@ def _render_volume_profile(all_candles, num_bins=50):
     option = {
         "backgroundColor": _BG, "tooltip": {**_TOOLTIP, "trigger": "axis"},
         "grid": {"left": "12%", "right": "6%", "top": "10%", "bottom": "10%"},
-        "xAxis": {"type": "value", "name": "Khối lượng tích lũy (USD)", "nameTextStyle": {"color": "#fafafa"},
-                  "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE},
+        "xAxis": {"type": "value", "name": f"Khối lượng ({vol_suffix} USD)", "nameTextStyle": {"color": "#fafafa"},
+                  "axisLabel": {**_AXIS_LABEL, "formatter": f"{{value}}{vol_suffix}"}, "splitLine": _SPLIT_LINE},
         "yAxis": {"type": "category", "data": y_labels, "axisLine": _AXIS_LINE, "axisLabel": _AXIS_LABEL},
         "series": [
             {"type": "bar", "data": bar_data, "barMaxWidth": 12},
@@ -821,7 +856,7 @@ def _render_volume_profile(all_candles, num_bins=50):
 # PANEL 5 – CORRELATION HEATMAP (ECharts)
 # ──────────────────────────────────────────────────────────────
 def _render_correlation_panel(all_candles):
-    st.markdown("### 🔗 Ma Trận Tương Quan Giá")
+    st.markdown("### 🔗 Ma trận tương quan giá")
     c1, p5c2 = st.columns([3, 1])
     with c1:
         corr_dates = st.date_input(
@@ -870,7 +905,7 @@ def _render_correlation_panel(all_candles):
 # PANEL 5b – ROLLING CORRELATION (ECharts)
 # ──────────────────────────────────────────────────────────────
 def _render_rolling_correlation_panel(all_candles):
-    st.markdown("### 📉 Tương Quan Động (Rolling Correlation)")
+    st.markdown("### 📉 Tương quan động")
     c1, p6c2, p6c3 = st.columns([1.5, 2, 1])
     with c1:
         rc_dates = st.date_input(
@@ -912,29 +947,62 @@ def _render_rolling_correlation_panel(all_candles):
         {"type": "inside", "start": 0, "end": 100},
     ]
 
-    pair_colors = [ACCENT_COLOR, WARNING_COLOR, "#06b6d4", BULL_COLOR, BEAR_COLOR]
     series = []
-    ci = 0
     coins_list = returns.columns.tolist()
+
+    # Distinct color palette for known coin pairs
+    pair_colors = {
+        "ETH-SOL":   "#f59e0b",   # amber
+        "DOGE-ETH":  "#00e5cc",   # teal
+        "DOGE-SOL":  "#a855f7",   # purple
+    }
+    # Fallback cycle for unknown pairs
+    _color_cycle = ["#f59e0b", "#00e5cc", "#a855f7", "#7c5cfc", "#ff3d71", "#10b981"]
+    pair_idx = 0
     for i, c1 in enumerate(coins_list):
         for j, c2 in enumerate(coins_list):
             if i < j:
                 rc = returns[c1].rolling(window=window, min_periods=24).corr(returns[c2])
                 vals = [round(v, 4) if pd.notna(v) else None for v in rc]
+                pair_key = f"{c1}-{c2}"
+                pair_color = pair_colors.get(pair_key, _color_cycle[pair_idx % len(_color_cycle)])
+                pair_idx += 1
                 series.append({
                     "name": f"{c1}–{c2}", "type": "line", "data": vals,
                     "smooth": True, "symbol": "none",
-                    "lineStyle": {"color": pair_colors[ci % len(pair_colors)], "width": 1.8},
+                    "lineStyle": {"color": pair_color, "width": 2},
+                    "itemStyle": {"color": pair_color},
                 })
-                ci += 1
+
+    # Tooltip — color matches each series line
+    _ROLLING_TOOLTIP = {
+        "trigger": "axis",
+        "axisPointer": {
+            "type": "cross",
+            "show": True,
+            "crossStyle": {"color": "rgba(255,255,255,0.2)"},
+            "link": [{"xAxisIndex": "all"}],
+        },
+        "backgroundColor": "rgba(15, 23, 42, 0.95)",
+        "borderColor": "rgba(124, 92, 252, 0.3)",
+        "borderWidth": 1,
+        "textStyle": {"color": "#e2e8f0", "fontSize": 15},
+        "formatter": JsCode(
+            "function(params) {"
+            "  if (!params || !params.length) return '';"
+            "  return '<div style=\"font-size:13px;color:#94a3b8;margin-bottom:4px\">' + params[0].axisValue + '</div>' +"
+            "    params.map(function(p){ return '<div style=\"color:'+p.color+';font-weight:bold\">'+p.seriesName+': '+p.value+'</div>'; }).join('');"
+            "}"
+        ).js_code,
+    }
 
     option = {
-        "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
+        "backgroundColor": _BG, "tooltip": _ROLLING_TOOLTIP, "legend": _LEGEND,
         "grid": _GRID,
         "xAxis": {"type": "category", "data": x, "axisLine": _AXIS_LINE,
                   "axisLabel": {**_AXIS_LABEL, "interval": max(0, len(x)//12-1)}, "splitLine": {"show": False}},
         "yAxis": {"type": "value", "name": "Hệ số tương quan", "nameTextStyle": {"color": "#fafafa"},
-                  "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE, "min": -1.1, "max": 1.1},
+                  "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE, "min": 0, "max": 1},
         "series": series + [{"type": "line", "markLine": {"data": [{"yAxis": 0}],
                   "lineStyle": {"color": "rgba(255,255,255,0.2)", "type": "dotted"}, "symbol": "none", "label": {"show": False}}}],
         "dataZoom": _DATAZOOM_AUTO,
@@ -946,7 +1014,7 @@ def _render_rolling_correlation_panel(all_candles):
 # PANEL 6 – LONG/SHORT RATIO (ECharts)
 # ──────────────────────────────────────────────────────────────
 def _render_ls_ratio_panel(all_metrics):
-    st.markdown("### ⚖️ Tỷ Lệ Long/Short — Cá Voi vs Tổng Thể")
+    st.markdown("### ⚖️ Tỷ lệ long/short — cá voi vs tổng thể")
     c1, p7c2 = st.columns([3, 1])
     with c1:
         ls_dates = st.date_input(
@@ -973,7 +1041,21 @@ def _render_ls_ratio_panel(all_metrics):
     div = [(t - g if t is not None and g is not None else None) for t, g in zip(top_ls, total_ls)]
 
     option = {
-        "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
+        "backgroundColor": _BG, "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "cross", "show": True, "crossStyle": {"color": "rgba(255,255,255,0.2)"}, "link": [{"xAxisIndex": "all"}]},
+            "backgroundColor": "rgba(15, 23, 42, 0.95)",
+            "borderColor": "rgba(124, 92, 252, 0.3)",
+            "borderWidth": 1,
+            "textStyle": {"color": "#e2e8f0", "fontSize": 15},
+            "formatter": JsCode(
+                "function(params){"
+                "  if(!params||!params.length)return '';"
+                "  return '<div style=\"font-size:13px;color:#94a3b8;margin-bottom:4px\">'+params[0].axisValue+'</div>'+"
+                "    params.map(function(p){return '<div style=\"color:'+p.color+';font-weight:bold\">'+p.seriesName+': '+p.value+'%</div>';}).join('');"
+                "}"
+            ).js_code,
+        }, "legend": _LEGEND,
         "grid": _GRID,
         "xAxis": {"type": "category", "data": x, "axisLine": _AXIS_LINE,
                   "axisLabel": {**_AXIS_LABEL, "interval": max(0, len(x)//12-1)}, "splitLine": {"show": False}},
@@ -1002,7 +1084,7 @@ def _render_ls_ratio_panel(all_metrics):
 # PANEL 7 – TAKER BUY RATIO + PRICE (ECharts)
 # ──────────────────────────────────────────────────────────────
 def _render_taker_ratio_panel(all_candles, all_metrics):
-    st.markdown("### 💹 Tỷ Lệ Taker Mua/Bán & Giá")
+    st.markdown("### 💹 Tỷ lệ taker mua/bán & giá")
     c1, p8c2 = st.columns([3, 1])
     with c1:
         taker_dates = st.date_input(
@@ -1034,9 +1116,12 @@ def _render_taker_ratio_panel(all_candles, all_metrics):
     price_data = [round(v, 2) for v in resampled["close"]]
     tbr_data = [round(v, 4) if pd.notna(v) else None for v in resampled["taker_buy_ratio"]]
 
+    coin_color = COIN_COLORS.get(coin, ACCENT_COLOR)
     series = [
         {"name": "Giá", "type": "line", "yAxisIndex": 0, "data": price_data,
-         "smooth": True, "symbol": "none", "lineStyle": {"color": TEXT_PRIMARY, "width": 1.5}},
+         "smooth": True, "symbol": "none",
+         "lineStyle": {"color": coin_color, "width": 2},
+         "itemStyle": {"color": coin_color}},
         {"name": "Taker Buy Ratio", "type": "line", "yAxisIndex": 1, "data": tbr_data,
          "smooth": True, "symbol": "none", "lineStyle": {"color": BULL_COLOR, "width": 1}},
     ]
@@ -1068,7 +1153,7 @@ def _render_taker_ratio_panel(all_candles, all_metrics):
 # PANEL 8 – SYNCED PRICE + OI + LIQUIDATION (ECharts 3-grid)
 # ──────────────────────────────────────────────────────────────
 def _render_synced_panel(all_candles, all_metrics, all_liq):
-    st.markdown("### 📊 Giá — Open Interest")
+    st.markdown("### 📊 Giá — open interest")
     c1, ps2, pi3 = st.columns([2, 1, 1])
     with c1:
         sync_dates = st.date_input(
@@ -1124,7 +1209,21 @@ def _render_synced_panel(all_candles, all_metrics, all_liq):
 
     coin_color = COIN_COLORS.get(coin, ACCENT_COLOR)
     option = {
-        "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
+        "backgroundColor": _BG, "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "cross", "show": True, "crossStyle": {"color": "rgba(255,255,255,0.2)"}, "link": [{"xAxisIndex": "all"}]},
+            "backgroundColor": "rgba(15, 23, 42, 0.95)",
+            "borderColor": "rgba(124, 92, 252, 0.3)",
+            "borderWidth": 1,
+            "textStyle": {"color": "#e2e8f0", "fontSize": 15},
+            "formatter": JsCode(
+                "function(params){"
+                "  if(!params||!params.length)return '';"
+                "  return '<div style=\"font-size:13px;color:#94a3b8;margin-bottom:4px\">'+params[0].axisValue+'</div>'+"
+                "    params.map(function(p){return '<div style=\"color:'+p.color+';font-weight:bold\">'+p.seriesName+': '+p.value+'</div>';}).join('');"
+                "}"
+            ).js_code,
+        }, "legend": _LEGEND,
         "grid": {"left": "6%", "right": "6%", "top": "12%", "bottom": "12%"},
         "xAxis": {"type": "category", "data": x, "axisLine": _AXIS_LINE,
                   "axisLabel": {**_AXIS_LABEL, "interval": max(0, len(x)//12-1)}},
@@ -1139,18 +1238,21 @@ def _render_synced_panel(all_candles, all_metrics, all_liq):
         "dataZoom": _DATAZOOM,
         "series": [
             {"name": "Giá", "type": "line", "yAxisIndex": 0, "data": [round(v, 2) for v in price_vals],
-             "smooth": True, "symbol": "none", "lineStyle": {"color": WARNING_COLOR, "width": 2},
+             "smooth": True, "symbol": "none",
+             "lineStyle": {"color": WARNING_COLOR, "width": 2},
+             "itemStyle": {"color": WARNING_COLOR},
              "z": 10},
             {"name": "OI", "type": "line", "yAxisIndex": 1,
              "data": [round(v, 2) if v is not None and not np.isnan(v) else None for v in oi_vals],
              "smooth": True, "symbol": "none",
              "lineStyle": {"color": coin_color, "width": 2},
+             "itemStyle": {"color": coin_color},
              "areaStyle": {
                  "color": {
                      "type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
                      "colorStops": [
-                         {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.4)"},
-                         {"offset": 1, "color": "rgba(0,0,0,0)"},
+                         {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.15)"},
+                        #  {"offset": 1, "color": "rgba(0,0,0,0)"},
                      ],
                  }
              },
@@ -1167,7 +1269,7 @@ def _render_synced_panel(all_candles, all_metrics, all_liq):
 # PANEL 9 – MARKET STATE SIGNALS (ECharts heatmap + bar)
 # ──────────────────────────────────────────────────────────────
 def _render_market_signals_panel(all_candles, all_metrics, all_liq):
-    st.markdown("### 🧠 Tín Hiệu Trạng Thái Thị Trường")
+    st.markdown("### 🧠 Tín hiệu trạng thái thị trường")
     c1, pm2 = st.columns([3, 1])
     with c1:
         ms_dates = st.date_input(
@@ -1290,7 +1392,7 @@ def _render_market_signals_panel(all_candles, all_metrics, all_liq):
 # PANEL 10 – CANDLE STATISTICS (Length Hist + Mean Volume)
 # ──────────────────────────────────────────────────────────────
 def _render_candle_stats_panel(all_candles):
-    st.markdown("### 📊 Thống Kê Độ Dài Nến (Mở, Đóng) & Khối Lượng Trung Bình")
+    st.markdown("### 📊 Thống kê độ dài nến (mở, đóng) & khối lượng trung bình")
     c1, ps2 = st.columns([3, 1])
     with c1:
         st_dates = st.date_input(
@@ -1332,6 +1434,7 @@ def _render_candle_stats_panel(all_candles):
     # Calculate overall mean volume for reference line
     mean_vol = df["volume"].mean()
 
+    coin_color = COIN_COLORS.get(coin, ACCENT_COLOR)
     option = {
         "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
         "grid": _GRID,
@@ -1340,17 +1443,17 @@ def _render_candle_stats_panel(all_candles):
         "yAxis": [
             {"type": "value", "name": "Tần suất (Số nến)", "nameTextStyle": {"color": TEXT_SECONDARY},
              "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE},
-            {"type": "value", "name": "K/L TB (USD)", "nameTextStyle": {"color": ACCENT_COLOR},
+            {"type": "value", "name": "K/L TB (USD)", "nameTextStyle": {"color": coin_color},
              "position": "right", "axisLabel": _AXIS_LABEL, "splitLine": {"show": False}},
         ],
         "series": [
             {"name": "Số lượng nến", "type": "bar", "data": freq_data,
-             "itemStyle": {"color": "rgba(124, 92, 252, 0.25)"}, "barMaxWidth": 30, "z": 2,
-             "label": {"show": True, "position": "top", "color": "#7c5cfd", "fontSize": 10}},
+             "itemStyle": {"color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.25)"}, "barMaxWidth": 30, "z": 2,
+             "label": {"show": True, "position": "top", "color": coin_color, "fontSize": 10}},
             {"name": "K/L trung bình", "type": "line", "yAxisIndex": 1, "data": vol_data,
              "smooth": True, "connectNulls": True,
-             "lineStyle": {"color": "#3b82f6", "width": 4},
-             "symbol": "circle", "symbolSize": 8, "itemStyle": {"color": "#3b82f6"}, "zlevel": 1},
+             "lineStyle": {"color": coin_color, "width": 4},
+             "symbol": "circle", "symbolSize": 8, "itemStyle": {"color": coin_color}, "zlevel": 1},
         ],
     }
     st_echarts(options=option, height="500px", key=f"st_ec_{coin}_{start_date}_{end_date}")
@@ -1360,7 +1463,7 @@ def _render_candle_stats_panel(all_candles):
 # PANEL 11 – TAIL STATISTICS (Wick Hist + OI Change)
 # ──────────────────────────────────────────────────────────────
 def _render_tail_stats_panel(all_candles, all_metrics):
-    st.markdown("### 📊 Thống Kê Đuôi Nến & Khối Lượng")
+    st.markdown("### 📊 Thống kê đuôi nến & khối lượng")
     c1, ps2 = st.columns([3, 1])
     with c1:
         tail_dates = st.date_input(
@@ -1402,24 +1505,25 @@ def _render_tail_stats_panel(all_candles, all_metrics):
     freq_data = stats["freq"].tolist()
     vol_data = [round(v, 2) if pd.notna(v) else 0 for v in stats["avg_vol"]]
 
+    coin_color = COIN_COLORS.get(coin, ACCENT_COLOR)
     option = {
         "backgroundColor": _BG, "tooltip": _TOOLTIP, "legend": _LEGEND,
         "grid": _GRID,
-        "xAxis": {"type": "category", "data": x_labels, "axisLine": _AXIS_LINE, 
+        "xAxis": {"type": "category", "data": x_labels, "axisLine": _AXIS_LINE,
                   "axisLabel": {**_AXIS_LABEL, "rotate": 35}},
         "yAxis": [
             {"type": "value", "name": "Số nến", "nameTextStyle": {"color": TEXT_SECONDARY},
              "axisLabel": _AXIS_LABEL, "splitLine": _SPLIT_LINE},
-            {"type": "value", "name": "K/L trung bình", "nameTextStyle": {"color": ACCENT_COLOR},
+            {"type": "value", "name": "K/L trung bình", "nameTextStyle": {"color": coin_color},
              "position": "right", "axisLabel": _AXIS_LABEL, "splitLine": {"show": False}},
         ],
         "series": [
-            {"name": "Số lượng nến", "type": "bar", "data": freq_data, 
-             "itemStyle": {"color": "rgba(79, 70, 229, 0.2)"}, "barMaxWidth": 40, "z": 2},
+            {"name": "Số lượng nến", "type": "bar", "data": freq_data,
+             "itemStyle": {"color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.2)"}, "barMaxWidth": 40, "z": 2},
             {"name": "K/L trung bình", "type": "line", "yAxisIndex": 1, "data": vol_data,
              "smooth": True, "connectNulls": True,
-             "lineStyle": {"color": "#3b82f6", "width": 4},
-             "symbol": "circle", "symbolSize": 8, "itemStyle": {"color": "#3b82f6"}, "zlevel": 1},
+             "lineStyle": {"color": coin_color, "width": 4},
+             "symbol": "circle", "symbolSize": 8, "itemStyle": {"color": coin_color}, "zlevel": 1},
         ],
     }
     st_echarts(options=option, height="500px", key=f"tail_ec_{coin}_{start_date}")
@@ -1430,7 +1534,7 @@ def _render_tail_stats_panel(all_candles, all_metrics):
 # PANEL – OI vs VOLUME CORRELATION
 # ──────────────────────────────────────────────────────────────
 def _render_oi_volume_panel(all_candles, all_metrics):
-    st.markdown("### 📊 Tương Quan OI & Khối Lượng")
+    st.markdown("### 📊 Tương quan OI & khối lượng")
     c1, c2 = st.columns([2, 1])
     with c1:
         corr_dates = st.date_input(
@@ -1496,24 +1600,29 @@ def _render_oi_volume_panel(all_candles, all_metrics):
         (weekly["week_start"] + pd.Timedelta(days=6)).dt.strftime("%d/%m")
     )
 
-    # ── Dual-axis: Volume + OI (daily) with Green/Red coloring ──
+    x_labels = [d.strftime("%d/%m") for d in merged["date"]]
+    coin_color = COIN_COLORS.get(corr_coin, ACCENT_COLOR)
+
+    # ── Dual-axis: Volume (VOL_COLOR) + OI (coin_color) ──
     vol_data = [
-        {"value": round(v / 1e6, 2), "itemStyle": {"color": BULL_COLOR if c >= o else BEAR_COLOR}}
-        for v, o, c in zip(merged["volume"], merged["daily_open"], merged["daily_close"])
+        {"value": round(v / 1e6, 2), "itemStyle": {"color": VOL_COLOR}}
+        for v in merged["volume"]
     ]
 
     oi_prev = merged["oi"].shift(1).fillna(merged["oi"])
     oi_data = [
-        {"value": round(o / 1e6, 2), "itemStyle": {"color": BULL_COLOR if o >= p else BEAR_COLOR}}
-        for o, p in zip(merged["oi"], oi_prev)
+        {"value": round(o / 1e6, 2), "itemStyle": {"color": coin_color}}
+        for o in merged["oi"]
     ]
 
-    x_labels = [d.strftime("%d/%m") for d in merged["date"]]
-    coin_color = COIN_COLORS.get(corr_coin, ACCENT_COLOR)
-
     option = {
-        "backgroundColor": _BG, "tooltip": _TOOLTIP,
-        "legend": {"top": 8, "textStyle": {"color": "#fafafa"}, "itemGap": 20, "itemIcon": "circle"},
+        "backgroundColor": _BG,
+        "tooltip": {"trigger": "axis", "backgroundColor": "#0d1420", "textStyle": {"color": "#e2e8f0"},
+                    "axisPointer": {"type": "shadow", "lineStyle": {"color": VOL_COLOR, "width": 1.5}}},
+        "legend": {"top": 8, "textStyle": {"color": "#fafafa"}, "itemGap": 20,
+                   "inactiveColor": "#4a5568",
+                   "data": [{"name": "Volume (M)", "icon": "roundRect", "itemStyle": {"color": VOL_COLOR}},
+                            {"name": "OI", "icon": "circle", "itemStyle": {"color": coin_color}}]},
         "grid": {"left": "6%", "right": "6%", "top": "18%", "bottom": "18%", "containLabel": True},
         "xAxis": {
             "type": "category", "data": x_labels,
@@ -1522,10 +1631,10 @@ def _render_oi_volume_panel(all_candles, all_metrics):
             "splitLine": {"show": False},
         },
         "yAxis": [
-            {"type": "value", "name": "Khối lượng giao dịch (M USD)", "nameTextStyle": {"color": "#fafafa"},
+            {"type": "value", "name": "Khối lượng giao dịch (USD)", "nameTextStyle": {"color": "#fafafa"},
              "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M"},
              "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
-            {"type": "value", "name": "OI (M USD)", "nameTextStyle": {"color": coin_color},
+            {"type": "value", "name": "OI (USD)", "nameTextStyle": {"color": coin_color},
              "position": "right",
              "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M", "color": coin_color},
              "splitLine": {"show": False}, "axisLine": {"show": False}},
@@ -1533,6 +1642,7 @@ def _render_oi_volume_panel(all_candles, all_metrics):
         "series": [
             {
                 "name": "Volume (M)", "type": "bar", "data": vol_data,
+                "itemStyle": {"color": VOL_COLOR},
                 "barMaxWidth": 20, "z": 1,
             },
             {
@@ -1543,8 +1653,8 @@ def _render_oi_volume_panel(all_candles, all_metrics):
                     "color": {
                         "type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
                         "colorStops": [
-                            {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.25)"},
-                            {"offset": 1, "color": "rgba(0,0,0,0)"},
+                            {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.15)"},
+                            # {"offset": 1, "color": "rgba(0,0,0,0)"},
                         ],
                     }
                 },
