@@ -76,6 +76,12 @@ def _fmt_price(val):
     if val >= 1:    return f"${val:.2f}"
     return f"${val:.4f}"
 
+def _fmt_price_compact(val):
+    """Compact price label for tight spaces (no commas, minimal decimals)."""
+    if val >= 1e3:  return f"${int(round(val))}"
+    if val >= 1:    return f"${val:.2f}"
+    return f"${val:.4f}"
+
 
 def _fmt_vol(val):
     """Format volume to K/M/B suffix."""
@@ -594,7 +600,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
              "max": round(max_liq * 1.15, 4)},
             # Row 1 — Price (right)
             {"type": "value", "name": f"Giá {price_coin}", "gridIndex": 1,
-             "nameTextStyle": {"color": "#fafafa", "fontSize": 15},
+             "nameTextStyle": {"color": "#f59e0b", "fontSize": 15},
              "position": "right",
              "axisLabel": {**_AXIS_LABEL, "formatter": "${value}"},
              "axisLine": {"show": False}, "splitLine": {"show": False},
@@ -787,7 +793,7 @@ def _render_volume_profile(all_candles, num_bins=50):
     va_low  = float(levels.loc[va_start, "price_level"])
     va_high = float(levels.loc[va_end,   "price_level"])
 
-    y_labels = [_fmt_price(pl) for pl in vol_profile["price_level"]]
+    y_labels = [_fmt_price_compact(pl) for pl in vol_profile["price_level"]]
 
     # Scale volume to readable K/M for x-axis
     raw_vols = vol_profile["volume"].tolist()
@@ -811,7 +817,7 @@ def _render_volume_profile(all_candles, num_bins=50):
         else:
             color = f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.12)"
         bar_data.append({
-            "value": [vol_scaled[i], _fmt_price(pl)],
+            "value": [vol_scaled[i], _fmt_price_compact(pl)],
             "itemStyle": {"color": color}
         })
 
@@ -820,10 +826,11 @@ def _render_volume_profile(all_candles, num_bins=50):
 
     option = {
         "backgroundColor": _BG, "tooltip": {**_TOOLTIP, "trigger": "axis"},
-        "grid": {"left": "12%", "right": "6%", "top": "10%", "bottom": "10%"},
+        "grid": {"left": "10%", "right": "6%", "top": "10%", "bottom": "10%"},
         "xAxis": {"type": "value", "name": f"Khối lượng ({vol_suffix} USD)", "nameTextStyle": {"color": "#fafafa"},
                   "axisLabel": {**_AXIS_LABEL, "formatter": f"{{value}}{vol_suffix}"}, "splitLine": _SPLIT_LINE},
-        "yAxis": {"type": "category", "data": y_labels, "axisLine": _AXIS_LINE, "axisLabel": _AXIS_LABEL},
+        "yAxis": {"type": "category", "data": y_labels, "axisLine": _AXIS_LINE,
+                  "axisLabel": {**_AXIS_LABEL, "fontSize": 9}},
         "series": [
             {"type": "bar", "data": bar_data, "barMaxWidth": 12},
             {
