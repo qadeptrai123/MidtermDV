@@ -1702,53 +1702,53 @@ def _render_oi_volume_panel(all_candles, all_metrics):
     }
     st_echarts(options=option, height="380px", key=f"corr_dual_{corr_coin}_{agg_mode}")
 
-    # ── Weekly summary table ──
-    st.markdown("**📅 Thay đổi theo tuần**")
+    # # ── Weekly summary table ──
+    # st.markdown("**📅 Thay đổi theo tuần**")
 
-    def _vol_color(v):
-        if v > 5:   return "🟢"
-        elif v < -5: return "🔴"
-        else:        return "⚪"
-    def _oi_color(v):
-        if v > 5:   return "🟢"
-        elif v < -5: return "🔴"
-        else:        return "⚪"
+    # def _vol_color(v):
+    #     if v > 5:   return "🟢"
+    #     elif v < -5: return "🔴"
+    #     else:        return "⚪"
+    # def _oi_color(v):
+    #     if v > 5:   return "🟢"
+    #     elif v < -5: return "🔴"
+    #     else:        return "⚪"
 
-    table_md = "| Tuần | Ngày | Vol % | OI % | Corr | Nhận xét |\n" + \
-               "|:---:|:---:|:---:|:---:|:---:|:---:|\n"
-    for _, row in weekly.dropna(subset=["vol_chg"]).iterrows():
-        vol_sgn = _vol_color(row["vol_chg"])
-        oi_sgn  = _oi_color(row["oi_chg"])
-        corr_v  = row["corr"] if row["corr"] is not None else "–"
-        v, o = row["vol_chg"], row["oi_chg"]
-        if abs(v) < 5 and abs(o) < 5:
-            note = "⚖️ Ổn định"
-        elif abs(v) < 5 and o > 5:
-            note = "📊 Vol ổn, OI tăng ↑"
-        elif abs(v) < 5 and o < -5:
-            note = "📊 Vol ổn, OI giảm ↓"
-        elif v > 5 and abs(o) < 5:
-            note = "🔥 Vol tăng, OI ổn"
-        elif v < -5 and abs(o) < 5:
-            note = "❄️ Vol giảm, OI ổn"
-        elif v > 5 and o > 5:
-            note = "✅ Cùng chiều (tăng)"
-        elif v < -5 and o < -5:
-            note = "📉 Cùng chiều (giảm)"
-        elif v > 5 and o < -5:
-            note = "⚠️ Phân kỳ! Vol↑ OI↓"
-        else:
-            note = "⚠️ Phân kỳ! Vol↓ OI↑"
-        table_md += f"| {row['week']} | {row['dates']} | {vol_sgn} {row['vol_chg']:+.1f}% | {oi_sgn} {row['oi_chg']:+.1f}% | {corr_v} | {note} |\n"
-    st.markdown(table_md)
+    # table_md = "| Tuần | Ngày | Vol % | OI % | Corr | Nhận xét |\n" + \
+    #            "|:---:|:---:|:---:|:---:|:---:|:---:|\n"
+    # for _, row in weekly.dropna(subset=["vol_chg"]).iterrows():
+    #     vol_sgn = _vol_color(row["vol_chg"])
+    #     oi_sgn  = _oi_color(row["oi_chg"])
+    #     corr_v  = row["corr"] if row["corr"] is not None else "–"
+    #     v, o = row["vol_chg"], row["oi_chg"]
+    #     if abs(v) < 5 and abs(o) < 5:
+    #         note = "⚖️ Ổn định"
+    #     elif abs(v) < 5 and o > 5:
+    #         note = "📊 Vol ổn, OI tăng ↑"
+    #     elif abs(v) < 5 and o < -5:
+    #         note = "📊 Vol ổn, OI giảm ↓"
+    #     elif v > 5 and abs(o) < 5:
+    #         note = "🔥 Vol tăng, OI ổn"
+    #     elif v < -5 and abs(o) < 5:
+    #         note = "❄️ Vol giảm, OI ổn"
+    #     elif v > 5 and o > 5:
+    #         note = "✅ Cùng chiều (tăng)"
+    #     elif v < -5 and o < -5:
+    #         note = "📉 Cùng chiều (giảm)"
+    #     elif v > 5 and o < -5:
+    #         note = "⚠️ Phân kỳ! Vol↑ OI↓"
+    #     else:
+    #         note = "⚠️ Phân kỳ! Vol↓ OI↑"
+    #     table_md += f"| {row['week']} | {row['dates']} | {vol_sgn} {row['vol_chg']:+.1f}% | {oi_sgn} {row['oi_chg']:+.1f}% | {corr_v} | {note} |\n"
+    # st.markdown(table_md)
 
-    # Pearson on chart data
-    _n = min(len(vol_vals), len(oi_vals))
-    full_corr = pd.Series(vol_vals[:_n]).corr(pd.Series(oi_vals[:_n])) if _n > 1 else 0.0
-    st.success(
-        f"**Pearson correlation `{corr_coin}` ({agg_mode}):** r = **{full_corr:.4f}**  — "
-        f"{'🔗 Tương quan thuận — OI phản ánh khối lượng' if full_corr > 0.3 else '🔗 Tương quan nghịch / yếu — OI KHÔNG phản ánh đúng khối lượng' if full_corr < -0.1 else '⚖️ Tương quan trung bình — OI phản ánh khối lượng ở mức hạn chế'}"
-    )
+    # # Pearson on chart data
+    # _n = min(len(vol_vals), len(oi_vals))
+    # full_corr = pd.Series(vol_vals[:_n]).corr(pd.Series(oi_vals[:_n])) if _n > 1 else 0.0
+    # st.success(
+    #     f"**Pearson correlation `{corr_coin}` ({agg_mode}):** r = **{full_corr:.4f}**  — "
+    #     f"{'🔗 Tương quan thuận — OI phản ánh khối lượng' if full_corr > 0.3 else '🔗 Tương quan nghịch / yếu — OI KHÔNG phản ánh đúng khối lượng' if full_corr < -0.1 else '⚖️ Tương quan trung bình — OI phản ánh khối lượng ở mức hạn chế'}"
+    # )
 
 
 
@@ -1782,6 +1782,8 @@ def render_dashboard(_df=None):
     _render_candlestick_panel(all_candles, all_liq)
     st.markdown("---")
     _render_oi_panel(all_metrics)
+    _render_synced_panel(all_candles, all_metrics, all_liq)
+    st.markdown("---")
     st.markdown("---")
     _render_oi_volume_panel(all_candles, all_metrics)
     st.markdown("---")
@@ -1805,8 +1807,6 @@ def render_dashboard(_df=None):
     #     _render_taker_ratio_panel(all_candles, all_metrics)
     # st.markdown("---")
 
-    _render_synced_panel(all_candles, all_metrics, all_liq)
-    st.markdown("---")
 
     # _render_liq_imbalance_panel(all_liq, all_candles)
     st.markdown("---")
