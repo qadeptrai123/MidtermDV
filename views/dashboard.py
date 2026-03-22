@@ -1535,7 +1535,7 @@ def _render_tail_stats_panel(all_candles, all_metrics):
 # ──────────────────────────────────────────────────────────────
 def _render_oi_volume_panel(all_candles, all_metrics):
     st.markdown("### 📊 Tương quan OI & khối lượng")
-    c1, c2 = st.columns([2, 1])
+    c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
         corr_dates = st.date_input(
             "Khoảng thời gian",
@@ -1544,6 +1544,8 @@ def _render_oi_volume_panel(all_candles, all_metrics):
             max_value=pd.Timestamp("2024-03-31").date(), format="DD/MM/YYYY", key="oi_vol_corr_dates")
     with c2:
         corr_coin = st.selectbox("Coin", COINS, key="corr_coin")
+    with c3:
+        agg_mode = st.selectbox("Chế độ", ["1 ngày", "1 tuần"], key="oi_vol_agg_mode")
 
     if len(corr_dates) != 2:
         st.warning("Chọn đầy đủ ngày."); return
@@ -1559,18 +1561,16 @@ def _render_oi_volume_panel(all_candles, all_metrics):
     if c_df.empty or m_df.empty:
         st.warning("Không có dữ liệu."); return
 
-    # Daily volume from candles
+    coin_color = COIN_COLORS.get(corr_coin, ACCENT_COLOR)
+
+    # ── Build daily aggregates ──
     c_df = c_df.copy()
     c_df["date"] = c_df["open_time"].dt.normalize()
 
-    # Aggregate daily: volume sum + first open + last close (same logic as candlestick panel)
     daily_agg = c_df.groupby("date").agg(
         volume=("volume", "sum"),
-        daily_open=("open", "first"),
-        daily_close=("close", "last"),
     ).reset_index()
 
-    # Daily avg OI from metrics
     m_df = m_df.copy()
     m_df["date"] = m_df["create_time"].dt.normalize()
     daily_oi = m_df.groupby("date")["sum_open_interest"].mean().reset_index()
@@ -1580,16 +1580,20 @@ def _render_oi_volume_panel(all_candles, all_metrics):
     merged["week"] = merged["date"].dt.isocalendar().week.astype(int)
     merged["week_start"] = merged["date"] - pd.to_timedelta(merged["date"].dt.dayofweek, unit="D")
 
-    # ── Week-over-week % changes ──
+    # ── Week-over-week % changes (always shown in table) ──
     weekly = merged.groupby("week").agg(
-        vol_start=("volume", "sum"), vol_end=("volume", "sum"),
-        oi_start=("oi", "first"), oi_end=("oi", "last"),
-        week_start=("week_start", "first"), n_days=("date", "count")
+        vol=("volume", "sum"),
+        oi_start=("oi", "first"),
+        oi_end=("oi", "last"),
+        week_start=("week_start", "first"),
+        n_days=("date", "count"),
     ).reset_index()
     weekly = weekly[weekly["n_days"] >= 4].copy()
-    weekly["vol_sum"] = weekly["vol_end"]  # weekly total volume (sum of all days in week)
-    weekly["vol_chg"] = weekly["vol_sum"].pct_change().mul(100).round(1)  # current week vs previous week
-    weekly["oi_chg"] = ((weekly["oi_end"] - weekly["oi_start"]) / weekly["oi_start"] * 100).round(1)
+
+    prev_vol = weekly["vol"].shift(1).fillna(weekly["vol"])
+    prev_oi  = weekly["oi_start"].shift(1).fillna(weekly["oi_start"])
+    weekly["vol_chg"] = ((weekly["vol"] - prev_vol) / prev_vol * 100).round(1)
+    weekly["oi_chg"]  = ((weekly["oi_end"] - weekly["oi_start"]) / weekly["oi_start"] * 100).round(1)
     weekly["corr"] = [
         round(merged[merged["week"] == w]["volume"].corr(merged[merged["week"] == w]["oi"]), 3)
         if len(merged[merged["week"] == w]) >= 3 else None
@@ -1600,28 +1604,61 @@ def _render_oi_volume_panel(all_candles, all_metrics):
         (weekly["week_start"] + pd.Timedelta(days=6)).dt.strftime("%d/%m")
     )
 
-    x_labels = [d.strftime("%d/%m") for d in merged["date"]]
-    coin_color = COIN_COLORS.get(corr_coin, ACCENT_COLOR)
+    # ── Build chart dataframe based on mode ──
+    if agg_mode == "1 tuần":
+        chart_df = weekly[weekly["vol_chg"].notna()].copy()
+        chart_df = chart_df.rename(columns={"vol": "volume", "oi_end": "oi"})
+        x_labels = chart_df["dates"].tolist()
+    else:
+        chart_df = merged.copy()
+        x_labels = [d.strftime("%d/%m") for d in chart_df["date"]]
 
-    # ── Dual-axis: Volume (VOL_COLOR) + OI (coin_color) ──
-    vol_data = [
-        {"value": round(v / 1e6, 2), "itemStyle": {"color": VOL_COLOR}}
-        for v in merged["volume"]
+    vol_vals = chart_df["volume"].tolist()
+    oi_vals  = chart_df["oi"].tolist()
+
+    # Scale volumes to best suffix
+    def _best_scale(vals):
+        mx = max(v for v in vals if v is not None and not np.isnan(v)) if vals else 1
+        if mx >= 1e9: return 1e9, "B"
+        if mx >= 1e6: return 1e6, "M"
+        if mx >= 1e3: return 1e3, "K"
+        return 1, ""
+
+    vol_scale, vol_sfx = _best_scale(vol_vals)
+    oi_scale, _        = _best_scale(oi_vals)
+
+    vol_data_scaled = [
+        {"value": round(v / vol_scale, 2), "itemStyle": {"color": ACCENT_COLOR}}
+        for v in vol_vals
+    ]
+    oi_data_scaled = [
+        {"value": round(o / oi_scale, 2), "itemStyle": {"color": coin_color}}
+        for o in oi_vals
     ]
 
-    oi_prev = merged["oi"].shift(1).fillna(merged["oi"])
-    oi_data = [
-        {"value": round(o / 1e6, 2), "itemStyle": {"color": coin_color}}
-        for o in merged["oi"]
-    ]
+    # ── Tooltip with per-series color ──
+    _VOL_TOOLTIP = {
+        "trigger": "axis",
+        "axisPointer": {"type": "cross", "show": True, "crossStyle": {"color": "rgba(255,255,255,0.2)"}, "link": [{"xAxisIndex": "all"}]},
+        "backgroundColor": "rgba(15, 23, 42, 0.95)",
+        "borderColor": "rgba(124, 92, 252, 0.3)",
+        "borderWidth": 1,
+        "textStyle": {"color": "#e2e8f0", "fontSize": 15},
+        "formatter": JsCode(
+            'function(params){'
+            '  if(!params||!params.length)return "";'
+            '  return "<div style=\\"font-size:13px;color:#94a3b8;margin-bottom:4px\\">"+params[0].axisValue+"</div>"+'
+            '    params.map(function(p){return "<div style=\\"color:"+p.color+";font-weight:bold\\">"+p.seriesName+": "+p.value+"</div>";}).join("");'
+            '}'
+        ).js_code,
+    }
 
     option = {
         "backgroundColor": _BG,
-        "tooltip": {"trigger": "axis", "backgroundColor": "#0d1420", "textStyle": {"color": "#e2e8f0"},
-                    "axisPointer": {"type": "shadow", "lineStyle": {"color": VOL_COLOR, "width": 1.5}}},
+        "tooltip": _VOL_TOOLTIP,
         "legend": {"top": 8, "textStyle": {"color": "#fafafa"}, "itemGap": 20,
                    "inactiveColor": "#4a5568",
-                   "data": [{"name": "Volume (M)", "icon": "roundRect", "itemStyle": {"color": VOL_COLOR}},
+                   "data": [{"name": "Volume", "icon": "roundRect", "itemStyle": {"color": ACCENT_COLOR}},
                             {"name": "OI", "icon": "circle", "itemStyle": {"color": coin_color}}]},
         "grid": {"left": "6%", "right": "6%", "top": "18%", "bottom": "18%", "containLabel": True},
         "xAxis": {
@@ -1631,30 +1668,30 @@ def _render_oi_volume_panel(all_candles, all_metrics):
             "splitLine": {"show": False},
         },
         "yAxis": [
-            {"type": "value", "name": "Khối lượng giao dịch (USD)", "nameTextStyle": {"color": "#fafafa"},
-             "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M"},
+            {"type": "value", "name": f"Khối lượng ({vol_sfx})", "nameTextStyle": {"color": "#fafafa"},
+             "axisLabel": {**_AXIS_LABEL, "formatter": f"{{value}}{vol_sfx}"},
              "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
-            {"type": "value", "name": "OI (USD)", "nameTextStyle": {"color": coin_color},
+            {"type": "value", "name": f"OI ({vol_sfx})", "nameTextStyle": {"color": coin_color},
              "position": "right",
-             "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M", "color": coin_color},
+             "axisLabel": {**_AXIS_LABEL, "formatter": f"{{value}}{vol_sfx}", "color": coin_color},
              "splitLine": {"show": False}, "axisLine": {"show": False}},
         ],
         "series": [
             {
-                "name": "Volume (M)", "type": "bar", "data": vol_data,
-                "itemStyle": {"color": VOL_COLOR},
+                "name": "Volume", "type": "bar", "data": vol_data_scaled,
+                "itemStyle": {"color": ACCENT_COLOR},
                 "barMaxWidth": 20, "z": 1,
             },
             {
                 "name": "OI", "type": "line", "yAxisIndex": 1,
-                "data": oi_data, "smooth": True, "symbol": "none",
+                "data": oi_data_scaled, "smooth": True, "symbol": "none",
                 "lineStyle": {"color": coin_color, "width": 2.5},
+                "itemStyle": {"color": coin_color},
                 "areaStyle": {
                     "color": {
                         "type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
                         "colorStops": [
                             {"offset": 0, "color": f"rgba({int(coin_color[1:3],16)},{int(coin_color[3:5],16)},{int(coin_color[5:7],16)},0.15)"},
-                            # {"offset": 1, "color": "rgba(0,0,0,0)"},
                         ],
                     }
                 },
@@ -1662,25 +1699,25 @@ def _render_oi_volume_panel(all_candles, all_metrics):
         ],
         "dataZoom": _DATAZOOM,
     }
-    st_echarts(options=option, height="380px", key=f"corr_dual_{corr_coin}")
+    st_echarts(options=option, height="380px", key=f"corr_dual_{corr_coin}_{agg_mode}")
 
     # ── Weekly summary table ──
     st.markdown("**📅 Thay đổi theo tuần**")
 
-    def vol_color(v):
+    def _vol_color(v):
         if v > 5:   return "🟢"
         elif v < -5: return "🔴"
         else:        return "⚪"
-    def oi_color(v):
+    def _oi_color(v):
         if v > 5:   return "🟢"
         elif v < -5: return "🔴"
         else:        return "⚪"
 
     table_md = "| Tuần | Ngày | Vol % | OI % | Corr | Nhận xét |\n" + \
-               "|:---:|:---:|:---:|:---:|:---:|:---|\n"
+               "|:---:|:---:|:---:|:---:|:---:|:---:|\n"
     for _, row in weekly.dropna(subset=["vol_chg"]).iterrows():
-        vol_sgn = vol_color(row["vol_chg"])
-        oi_sgn  = oi_color(row["oi_chg"])
+        vol_sgn = _vol_color(row["vol_chg"])
+        oi_sgn  = _oi_color(row["oi_chg"])
         corr_v  = row["corr"] if row["corr"] is not None else "–"
         v, o = row["vol_chg"], row["oi_chg"]
         if abs(v) < 5 and abs(o) < 5:
@@ -1701,13 +1738,17 @@ def _render_oi_volume_panel(all_candles, all_metrics):
             note = "⚠️ Phân kỳ! Vol↑ OI↓"
         else:
             note = "⚠️ Phân kỳ! Vol↓ OI↑"
-
         table_md += f"| {row['week']} | {row['dates']} | {vol_sgn} {row['vol_chg']:+.1f}% | {oi_sgn} {row['oi_chg']:+.1f}% | {corr_v} | {note} |\n"
-
     st.markdown(table_md)
 
-    full_corr = merged["volume"].corr(merged["oi"])
-    st.success(f"**Pearson Correlation (toàn kỳ) `{corr_coin}`:** r = **{full_corr:.4f}**  — {'🔗 Tương quan thuận — OI phản ánh khối lượng' if full_corr > 0.3 else '🔗 Tương quan nghịch / yếu — OI KHÔNG phản ánh đúng khối lượng' if full_corr < -0.1 else '⚖️ Tương quan trung bình — OI phản ánh khối lượng ở mức hạn chế'}")
+    # Pearson on chart data
+    _n = min(len(vol_vals), len(oi_vals))
+    full_corr = pd.Series(vol_vals[:_n]).corr(pd.Series(oi_vals[:_n])) if _n > 1 else 0.0
+    st.success(
+        f"**Pearson correlation `{corr_coin}` ({agg_mode}):** r = **{full_corr:.4f}**  — "
+        f"{'🔗 Tương quan thuận — OI phản ánh khối lượng' if full_corr > 0.3 else '🔗 Tương quan nghịch / yếu — OI KHÔNG phản ánh đúng khối lượng' if full_corr < -0.1 else '⚖️ Tương quan trung bình — OI phản ánh khối lượng ở mức hạn chế'}"
+    )
+
 
 
 # ──────────────────────────────────────────────────────────────
