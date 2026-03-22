@@ -163,9 +163,10 @@ def _postprocess_candles(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _postprocess_liquidation(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert epoch-ms timestamp to readable datetime."""
+    """Convert epoch-ms timestamp to readable datetime, then drop exact duplicate rows."""
     df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="ms")
     df.sort_values("time", inplace=True)
+    df.drop_duplicates(inplace=True)
     df.reset_index(drop=True, inplace=True)
     return df
 

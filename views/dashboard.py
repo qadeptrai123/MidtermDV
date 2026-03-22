@@ -451,7 +451,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
             },
             "yAxis": {
                 "type": "value",
-                "name": "Giá trị (M USD)",
+                "name": "Giá trị (USD)",
                 "nameTextStyle": {"color": "#fafafa", "fontSize": 15},
                 "axisLabel": {**_AXIS_LABEL, "formatter": "${value}M"},
                 "axisLine": {"show": False},
@@ -593,7 +593,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
              "axisLine": {"show": False}, "splitLine": {"show": False},
              "min": -100, "max": 100},
             # Row 1 — Thanh lý (left)
-            {"type": "value", "name": "Thanh lý (M USD)", "gridIndex": 1,
+            {"type": "value", "name": "Thanh lý (USD)", "gridIndex": 1,
              "nameTextStyle": {"color": "#fafafa", "fontSize": 15},
              "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M"},
              "axisLine": {"show": False}, "splitLine": _SPLIT_LINE,
@@ -1522,10 +1522,10 @@ def _render_oi_volume_panel(all_candles, all_metrics):
             "splitLine": {"show": False},
         },
         "yAxis": [
-            {"type": "value", "name": "Khối lượng giao dịch (M USD)", "nameTextStyle": {"color": "#fafafa"},
+            {"type": "value", "name": "Khối lượng giao dịch (USD)", "nameTextStyle": {"color": "#fafafa"},
              "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M"},
              "splitLine": _SPLIT_LINE, "axisLine": {"show": False}},
-            {"type": "value", "name": "OI (M USD)", "nameTextStyle": {"color": coin_color},
+            {"type": "value", "name": "OI (USD)", "nameTextStyle": {"color": coin_color},
              "position": "right",
              "axisLabel": {**_AXIS_LABEL, "formatter": "{value}M", "color": coin_color},
              "splitLine": {"show": False}, "axisLine": {"show": False}},
@@ -1613,9 +1613,9 @@ def render_dashboard(_df=None):
                 -webkit-text-fill-color: transparent;
                 font-size: 2rem; font-weight: 800;
                 margin-bottom: 0.15rem; letter-spacing: -0.5px;
-            ">CRYPTO FUTURES DASHBOARD</h1>
+            ">DASHBOARD PHÂN TÍCH THỊ TRƯỜNG CRYPTO</h1>
             <p style="color: #94a3b8; font-size: 0.85rem; margin:0; padding-bottom: 1rem;">
-                ETH · SOL · DOGE &nbsp;|&nbsp; Hợp đồng Vĩnh Cửu &nbsp;|&nbsp; Q1/2024 &nbsp;|&nbsp; Dữ liệu 1H
+                ETH - SOL - DOGE &nbsp;|&nbsp; Hợp đồng Vĩnh Cửu &nbsp;|&nbsp; Q1/2024 &nbsp;
             </p>
         </div>
         """, unsafe_allow_html=True)

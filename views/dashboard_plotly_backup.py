@@ -368,7 +368,7 @@ def _render_liquidation_echarts(all_liq, all_candles):
         "yAxis": [
             {
                 "type": "value",
-                "name": "K/l Thanh lý (M USD)",
+                "name": "K/l Thanh lý (USD)",
                 "nameTextStyle": {"color": "#94a3b8", "fontSize": 11},
                 "axisLabel": {
                     "color": "#94a3b8",
